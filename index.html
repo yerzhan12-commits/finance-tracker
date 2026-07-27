@@ -208,13 +208,7 @@
         </div>
         <div class="field">
           <label>Источник</label>
-          <select id="opSource">
-            <option value="shop">Магазин</option>
-            <option value="personal">Личное</option>
-            <option value="pension">Пенсия</option>
-            <option value="securities">Ценные бумаги</option>
-            <option value="deposit">Депозит</option>
-          </select>
+          <select id="opSource"></select>
         </div>
         <div class="field">
           <label>Категория</label>
@@ -231,6 +225,21 @@
         </div>
         <button type="submit" class="btn-primary">Добавить операцию</button>
       </form>
+
+      <div class="card">
+        <div class="list-header">
+          <h2>Источники</h2>
+          <span class="muted" id="sourceCount"></span>
+        </div>
+        <div id="sourceList"></div>
+        <div class="field" style="margin-top:12px;margin-bottom:0;">
+          <label>Новый источник</label>
+          <div style="display:flex;gap:8px;">
+            <input type="text" id="newSourceName" placeholder="Например: Фриланс, Аренда квартиры">
+            <button type="button" id="addSourceBtn" class="btn-secondary" style="width:auto;white-space:nowrap;margin-bottom:0;padding:11px 16px;">Добавить</button>
+          </div>
+        </div>
+      </div>
 
       <div class="card">
         <div class="list-header">
@@ -329,12 +338,12 @@
 
 var STORAGE_KEY = "financeTrackerData_v1";
 
-var SOURCES = [
-  { key:"shop",       label:"Магазин",        color:"var(--blue)",    hex:"#2a78d6" },
-  { key:"personal",   label:"Личное",         color:"var(--orange)",  hex:"#eb6834" },
-  { key:"pension",    label:"Пенсия",         color:"var(--aqua)",    hex:"#1baf7a" },
-  { key:"securities", label:"Ценные бумаги",  color:"var(--yellow)",  hex:"#eda100" },
-  { key:"deposit",    label:"Депозит",        color:"var(--magenta)", hex:"#e87ba4" }
+var DEFAULT_SOURCES = [
+  { key:"shop",       label:"Магазин" },
+  { key:"personal",   label:"Личное" },
+  { key:"pension",    label:"Пенсия" },
+  { key:"securities", label:"Ценные бумаги" },
+  { key:"deposit",    label:"Депозит" }
 ];
 
 var CATEGORY_SUGGESTIONS = {
@@ -356,7 +365,7 @@ var PERIOD_PRESETS = [
   { key:"all",       label:"Всё время" }
 ];
 
-var state = { operations:[], assets:[] };
+var state = { operations:[], assets:[], sources:DEFAULT_SOURCES.slice() };
 var currentPeriod = "month";
 
 /* ---------- storage ---------- */
@@ -368,6 +377,9 @@ function loadState(){
       var parsed = JSON.parse(raw);
       if(parsed && Array.isArray(parsed.operations) && Array.isArray(parsed.assets)){
         state = parsed;
+        if(!Array.isArray(state.sources) || !state.sources.length){
+          state.sources = DEFAULT_SOURCES.slice();
+        }
       }
     }
   }catch(e){}
@@ -401,8 +413,8 @@ function todayStr(){
 }
 
 function sourceInfo(key){
-  for(var i=0;i<SOURCES.length;i++){ if(SOURCES[i].key === key) return SOURCES[i]; }
-  return SOURCES[0];
+  for(var i=0;i<state.sources.length;i++){ if(state.sources[i].key === key) return state.sources[i]; }
+  return { key:key, label:key };
 }
 
 function monthKey(dateStr){
@@ -511,7 +523,78 @@ function updateCategoryOptions(){
     dl.appendChild(opt);
   });
 }
-updateCategoryOptions();
+
+/* ---------- sources (dynamic, user-managed) ---------- */
+
+function renderSourceSelect(){
+  var prev = opSource.value;
+  opSource.innerHTML = "";
+  state.sources.forEach(function(s){
+    var opt = document.createElement("option");
+    opt.value = s.key;
+    opt.textContent = s.label;
+    opSource.appendChild(opt);
+  });
+  if(state.sources.some(function(s){ return s.key === prev; })){
+    opSource.value = prev;
+  }
+  updateCategoryOptions();
+}
+
+function renderSourceList(){
+  var list = document.getElementById("sourceList");
+  var count = document.getElementById("sourceCount");
+  count.textContent = state.sources.length + " шт.";
+  list.innerHTML = "";
+  state.sources.forEach(function(s){
+    var row = document.createElement("div");
+    row.className = "op-row";
+    var main = document.createElement("div");
+    main.className = "op-main";
+    var name = document.createElement("div");
+    name.className = "op-cat";
+    name.textContent = s.label;
+    main.appendChild(name);
+    row.appendChild(main);
+
+    if(s.key !== "shop"){
+      var del = document.createElement("button");
+      del.className = "del-btn";
+      del.type = "button";
+      del.textContent = "×";
+      del.addEventListener("click", function(){
+        var used = state.operations.some(function(o){ return o.source === s.key; });
+        if(used){
+          alert("Нельзя удалить «" + s.label + "» — этот источник используется в операциях. Сначала удалите или измените их во вкладке «Операции».");
+          return;
+        }
+        if(confirm("Удалить источник «" + s.label + "»?")){
+          state.sources = state.sources.filter(function(x){ return x.key !== s.key; });
+          saveState();
+          renderSourceList();
+          renderSourceSelect();
+        }
+      });
+      row.appendChild(del);
+    }
+    list.appendChild(row);
+  });
+}
+
+document.getElementById("addSourceBtn").addEventListener("click", function(){
+  var input = document.getElementById("newSourceName");
+  var name = (input.value || "").trim();
+  if(!name) return;
+  if(state.sources.some(function(s){ return s.label.toLowerCase() === name.toLowerCase(); })){
+    alert("Источник с таким названием уже есть.");
+    return;
+  }
+  state.sources.push({ key: uid(), label: name });
+  saveState();
+  input.value = "";
+  renderSourceList();
+  renderSourceSelect();
+});
 
 opForm.addEventListener("submit", function(e){
   e.preventDefault();
@@ -746,23 +829,32 @@ function renderTrendChart(){
   ]);
 }
 
+function topNWithOther(items, n){
+  items = items.slice().sort(function(a,b){ return b.value - a.value; });
+  if(items.length <= n) return items;
+  var head = items.slice(0, n-1);
+  var otherSum = items.slice(n-1).reduce(function(s,i){ return s+i.value; }, 0);
+  head.push({ label:"Другое", value:otherSum, color:"#2a78d6" });
+  return head;
+}
+
 function renderCategoryChart(ops){
   var map = {};
   ops.filter(function(o){ return o.type === "expense"; }).forEach(function(o){
     map[o.category] = (map[o.category] || 0) + o.amount;
   });
   var items = Object.keys(map).map(function(k){ return { label:k, value:map[k], color:"#2a78d6" }; });
-  items.sort(function(a,b){ return b.value - a.value; });
-  items = items.slice(0, 8);
+  items = topNWithOther(items, 8);
   hBarChart(document.getElementById("categoryChart"), items, "Нет расходов за выбранный период.");
 }
 
 function renderSourceChart(ops, type, containerId){
-  var items = SOURCES.map(function(s){
+  var items = state.sources.map(function(s){
     var sum = ops.filter(function(o){ return o.source === s.key && o.type === type; })
                  .reduce(function(a,o){ return a+o.amount; }, 0);
-    return { label:s.label, value:sum, color:s.hex };
+    return { label:s.label, value:sum, color:"#2a78d6" };
   }).filter(function(i){ return i.value > 0; });
+  items = topNWithOther(items, 8);
   var emptyMsg = type === "income" ? "Нет доходов за выбранный период." : "Нет расходов за выбранный период.";
   hBarChart(document.getElementById(containerId), items, emptyMsg);
 }
@@ -1035,7 +1127,7 @@ function downloadFile(filename, content, mime){
 }
 
 document.getElementById("exportJsonBtn").addEventListener("click", function(){
-  var payload = { operations:state.operations, assets:state.assets, exportedAt:new Date().toISOString() };
+  var payload = { operations:state.operations, assets:state.assets, sources:state.sources, exportedAt:new Date().toISOString() };
   downloadFile("finance-backup-" + todayStr() + ".json", JSON.stringify(payload, null, 2), "application/json");
 });
 
@@ -1067,7 +1159,11 @@ document.getElementById("importFile").addEventListener("change", function(e){
         return;
       }
       if(confirm("Заменить текущие данные на данные из файла? Это действие нельзя отменить.")){
-        state = { operations:data.operations, assets:data.assets };
+        state = {
+          operations: data.operations,
+          assets: data.assets,
+          sources: Array.isArray(data.sources) && data.sources.length ? data.sources : DEFAULT_SOURCES.slice()
+        };
         saveState();
         location.reload();
       }
@@ -1081,6 +1177,8 @@ document.getElementById("importFile").addEventListener("change", function(e){
 /* ---------- init ---------- */
 
 loadState();
+renderSourceSelect();
+renderSourceList();
 renderOperations();
 renderAssets();
 renderDashboard();
