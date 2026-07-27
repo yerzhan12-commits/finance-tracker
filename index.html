@@ -1,0 +1,1092 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Финансы — учёт и аналитика</title>
+<link rel="icon" href="data:,">
+<style>
+  :root{
+    --page:#f9f9f7;
+    --surface:#fcfcfb;
+    --ink:#0b0b0b;
+    --ink2:#52514e;
+    --muted:#898781;
+    --grid:#e1e0d9;
+    --border:rgba(11,11,11,0.10);
+    --good:#006300;
+    --bad:#d03b3b;
+    --blue:#2a78d6;
+    --orange:#eb6834;
+    --aqua:#1baf7a;
+    --yellow:#eda100;
+    --magenta:#e87ba4;
+    --red:#e34948;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+    background:var(--page);
+    color:var(--ink);
+  }
+  .app{max-width:480px;margin:0 auto;padding:16px 16px 90px;}
+  header{padding:8px 4px 16px;text-align:center;}
+  header h1{font-size:22px;color:var(--blue);}
+  header .subtitle{font-size:13px;color:var(--muted);margin-top:4px;}
+
+  nav.tabs{
+    position:fixed;bottom:0;left:0;right:0;
+    background:var(--surface);
+    border-top:1px solid var(--border);
+    display:flex;
+    max-width:480px;margin:0 auto;
+    z-index:20;
+  }
+  .tab-btn{
+    flex:1;background:none;border:none;padding:12px 4px 10px;
+    font-size:12px;color:var(--muted);cursor:pointer;
+  }
+  .tab-btn.active{color:var(--blue);font-weight:600;}
+
+  .tab-panel{display:none;}
+  .tab-panel.active{display:block;}
+
+  .card{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:14px;
+    padding:16px;
+    margin-bottom:12px;
+  }
+  .card h2{font-size:15px;margin-bottom:12px;}
+  .muted{color:var(--muted);font-size:13px;}
+
+  .field{margin-bottom:14px;}
+  .field-row{display:flex;gap:10px;}
+  .field-row .field{flex:1;}
+  label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px;}
+  input[type=text],input[type=number],input[type=date],select{
+    width:100%;padding:11px 12px;border:1px solid var(--border);
+    border-radius:10px;font-size:15px;background:var(--surface);color:var(--ink);
+  }
+  input:focus,select:focus{outline:2px solid var(--blue);outline-offset:1px;}
+
+  .segmented{display:flex;border:1px solid var(--border);border-radius:10px;overflow:hidden;}
+  .seg-btn{flex:1;padding:11px 8px;border:none;background:var(--surface);color:var(--ink2);font-size:14px;cursor:pointer;}
+  .seg-btn.active[data-type="expense"]{background:var(--red);color:#fff;}
+  .seg-btn.active[data-type="income"]{background:var(--blue);color:#fff;}
+
+  .btn-primary{
+    width:100%;padding:13px;border:none;border-radius:10px;
+    background:var(--blue);color:#fff;font-size:15px;font-weight:600;cursor:pointer;
+  }
+  .btn-secondary{
+    display:block;width:100%;padding:12px;border:1px solid var(--border);border-radius:10px;
+    background:var(--surface);color:var(--blue);font-size:14px;font-weight:600;cursor:pointer;margin-bottom:10px;
+  }
+  .btn-secondary:last-child{margin-bottom:0;}
+
+  .list-header{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;}
+  .list-header h2{margin-bottom:0;}
+
+  .op-row{
+    display:flex;justify-content:space-between;align-items:center;
+    padding:10px 0;border-bottom:1px solid var(--grid);gap:8px;
+  }
+  .op-row:last-child{border-bottom:none;}
+  .op-main{min-width:0;}
+  .op-cat{font-size:14px;font-weight:600;}
+  .op-meta{font-size:12px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .op-right{display:flex;align-items:center;gap:8px;flex-shrink:0;}
+  .op-amount{font-size:14px;font-weight:700;white-space:nowrap;}
+  .op-amount.income{color:var(--good);}
+  .op-amount.expense{color:var(--bad);}
+  .del-btn{
+    background:none;border:none;color:var(--muted);font-size:18px;line-height:1;
+    cursor:pointer;padding:4px 6px;
+  }
+
+  .empty-state{color:var(--muted);font-size:13px;text-align:center;padding:20px 8px;}
+
+  .period-row{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;margin-bottom:12px;}
+  .period-btn{
+    flex-shrink:0;padding:8px 14px;border-radius:20px;border:1px solid var(--border);
+    background:var(--surface);color:var(--ink2);font-size:13px;cursor:pointer;white-space:nowrap;
+  }
+  .period-btn.active{background:var(--blue);color:#fff;border-color:var(--blue);}
+
+  .kpi-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;}
+  .stat-tile{
+    background:var(--surface);border:1px solid var(--border);border-radius:14px;
+    padding:12px 14px;
+  }
+  .stat-tile .label{font-size:12px;color:var(--muted);}
+  .stat-tile .value{font-size:19px;font-weight:700;margin-top:2px;}
+  .stat-tile .value.good{color:var(--good);}
+  .stat-tile .value.bad{color:var(--bad);}
+
+  .chart-box{width:100%;}
+  .chart-box svg{width:100%;height:auto;display:block;overflow:visible;}
+  .legend{display:flex;flex-wrap:wrap;gap:12px;margin-top:8px;}
+  .legend-item{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink2);}
+  .legend-swatch{width:14px;height:2px;border-radius:1px;}
+  .legend-swatch.dot{width:8px;height:8px;border-radius:50%;}
+
+  .chart-tooltip{
+    position:fixed;pointer-events:none;background:var(--ink);color:#fff;
+    font-size:12px;padding:8px 10px;border-radius:8px;z-index:50;
+    box-shadow:0 4px 12px rgba(0,0,0,0.2);max-width:220px;
+  }
+  .chart-tooltip .tt-title{color:#c3c2b7;margin-bottom:4px;}
+  .chart-tooltip .tt-row{display:flex;align-items:center;gap:6px;}
+  .chart-tooltip .tt-key{width:8px;height:8px;border-radius:2px;flex-shrink:0;}
+  .chart-tooltip .tt-val{font-weight:700;margin-left:auto;padding-left:10px;}
+
+  .shop-card{border-color:var(--blue);}
+  .shop-card h2{color:var(--blue);}
+
+  .import-note{font-size:12px;color:var(--muted);margin-top:8px;}
+</style>
+</head>
+<body>
+
+<div class="app">
+  <header>
+    <h1>Финансы</h1>
+    <div class="subtitle">Магазин, личные расходы, пенсия, ценные бумаги, депозиты — в одном месте</div>
+  </header>
+
+  <main>
+
+    <section id="tab-dashboard" class="tab-panel active">
+      <div class="period-row" id="periodRow"></div>
+      <div class="kpi-row" id="kpiRow"></div>
+
+      <div class="card">
+        <h2>Доходы и расходы по месяцам</h2>
+        <div id="trendChart" class="chart-box"></div>
+      </div>
+
+      <div class="card">
+        <h2>Расходы по категориям</h2>
+        <div id="categoryChart" class="chart-box"></div>
+      </div>
+
+      <div class="card">
+        <h2>Доходы по источникам</h2>
+        <div id="incomeSourceChart" class="chart-box"></div>
+      </div>
+
+      <div class="card">
+        <h2>Расходы по источникам</h2>
+        <div id="expenseSourceChart" class="chart-box"></div>
+      </div>
+
+      <div class="card shop-card">
+        <h2>Прибыльность магазина</h2>
+        <div class="kpi-row" id="shopKpiRow"></div>
+        <div class="muted" style="margin-bottom:8px;">Прибыль по месяцам</div>
+        <div id="shopTrendChart" class="chart-box"></div>
+      </div>
+    </section>
+
+    <section id="tab-operations" class="tab-panel">
+      <form id="opForm" class="card">
+        <h2>Добавить операцию</h2>
+        <div class="field-row">
+          <div class="field">
+            <label>Дата</label>
+            <input type="date" id="opDate" required>
+          </div>
+          <div class="field">
+            <label>Тип</label>
+            <div class="segmented">
+              <button type="button" class="seg-btn active" data-type="expense">Расход</button>
+              <button type="button" class="seg-btn" data-type="income">Доход</button>
+            </div>
+          </div>
+        </div>
+        <div class="field">
+          <label>Источник</label>
+          <select id="opSource">
+            <option value="shop">Магазин</option>
+            <option value="personal">Личное</option>
+            <option value="pension">Пенсия</option>
+            <option value="securities">Ценные бумаги</option>
+            <option value="deposit">Депозит</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Категория</label>
+          <input type="text" id="opCategory" list="categoryOptions" placeholder="Например: Продукты" required>
+          <datalist id="categoryOptions"></datalist>
+        </div>
+        <div class="field">
+          <label>Сумма, ₸</label>
+          <input type="number" id="opAmount" min="0" step="1" inputmode="numeric" placeholder="0" required>
+        </div>
+        <div class="field">
+          <label>Комментарий (необязательно)</label>
+          <input type="text" id="opComment" placeholder="">
+        </div>
+        <button type="submit" class="btn-primary">Добавить операцию</button>
+      </form>
+
+      <div class="card">
+        <div class="list-header">
+          <h2>История операций</h2>
+          <span class="muted" id="opCount"></span>
+        </div>
+        <div id="opList"></div>
+      </div>
+    </section>
+
+    <section id="tab-assets" class="tab-panel">
+      <form id="assetForm" class="card">
+        <h2>Добавить / обновить актив</h2>
+        <div class="field">
+          <label>Тип</label>
+          <select id="assetType">
+            <option value="deposit">Депозит</option>
+            <option value="securities">Ценные бумаги (Пайдакс)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Название</label>
+          <input type="text" id="assetName" placeholder="Например: Депозит Kaspi" required>
+        </div>
+        <div class="field">
+          <label>Текущая сумма, ₸</label>
+          <input type="number" id="assetAmount" min="0" step="1" inputmode="numeric" placeholder="0" required>
+        </div>
+        <div class="field">
+          <label>Заметка (необязательно)</label>
+          <input type="text" id="assetNote" placeholder="">
+        </div>
+        <button type="submit" class="btn-primary">Сохранить актив</button>
+      </form>
+
+      <div class="card">
+        <div class="list-header">
+          <h2>Депозиты</h2>
+          <span class="muted" id="depositTotal"></span>
+        </div>
+        <div id="depositList"></div>
+      </div>
+
+      <div class="card">
+        <div class="list-header">
+          <h2>Ценные бумаги</h2>
+          <span class="muted" id="securitiesTotal"></span>
+        </div>
+        <div id="securitiesList"></div>
+      </div>
+
+      <div class="card">
+        <div class="list-header">
+          <h2>Итого капитал</h2>
+          <span class="value" id="assetsGrandTotal" style="font-size:19px;font-weight:700;"></span>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-data" class="tab-panel">
+      <div class="card">
+        <h2>Экспорт данных</h2>
+        <p class="muted" style="margin-bottom:12px;">Скачайте резервную копию всех данных (для переноса на другое устройство) или таблицу операций для Excel.</p>
+        <button id="exportJsonBtn" class="btn-secondary">Скачать резервную копию (JSON)</button>
+        <button id="exportCsvBtn" class="btn-secondary">Скачать операции (CSV)</button>
+      </div>
+      <div class="card">
+        <h2>Импорт данных</h2>
+        <p class="muted" style="margin-bottom:12px;">Загрузите ранее сохранённый файл резервной копии (JSON). Это заменит все текущие данные в этом браузере.</p>
+        <input type="file" id="importFile" accept="application/json">
+        <div class="import-note">После импорта страница обновится автоматически.</div>
+      </div>
+      <div class="card">
+        <h2>Где хранятся данные</h2>
+        <p class="muted">Все данные хранятся только в этом браузере на этом устройстве — никуда не отправляются и никому не видны. Если открыть приложение на телефоне и на компьютере отдельно — данные не совпадут. Чтобы перенести их на другое устройство: экспортируйте JSON здесь и импортируйте его там.</p>
+      </div>
+    </section>
+
+  </main>
+
+  <nav class="tabs">
+    <button class="tab-btn active" data-tab="dashboard">Обзор</button>
+    <button class="tab-btn" data-tab="operations">Операции</button>
+    <button class="tab-btn" data-tab="assets">Активы</button>
+    <button class="tab-btn" data-tab="data">Данные</button>
+  </nav>
+</div>
+
+<div id="tooltip" class="chart-tooltip" hidden></div>
+
+<script>
+(function(){
+"use strict";
+
+/* ---------- constants ---------- */
+
+var STORAGE_KEY = "financeTrackerData_v1";
+
+var SOURCES = [
+  { key:"shop",       label:"Магазин",        color:"var(--blue)",    hex:"#2a78d6" },
+  { key:"personal",   label:"Личное",         color:"var(--orange)",  hex:"#eb6834" },
+  { key:"pension",    label:"Пенсия",         color:"var(--aqua)",    hex:"#1baf7a" },
+  { key:"securities", label:"Ценные бумаги",  color:"var(--yellow)",  hex:"#eda100" },
+  { key:"deposit",    label:"Депозит",        color:"var(--magenta)", hex:"#e87ba4" }
+];
+
+var CATEGORY_SUGGESTIONS = {
+  shop:       { income:["Продажи опт","Продажи розница","Прочий доход"], expense:["Закупка товара","Аренда","Реклама","Логистика","Зарплата","Прочее"] },
+  personal:   { income:["Прочий доход"], expense:["Продукты","Коммуналка","Транспорт","Здоровье","Одежда","Развлечения","Дом","Прочее"] },
+  pension:    { income:["Пенсия"], expense:["Прочее"] },
+  securities: { income:["Дивиденды","Продажа бумаг","Прибыль"], expense:["Покупка бумаг","Комиссия"] },
+  deposit:    { income:["Проценты"], expense:["Пополнение вклада"] }
+};
+
+var MONTH_NAMES = ["Янв","Фев","Мар","Апр","Май","Июн","Июл","Авг","Сен","Окт","Ноя","Дек"];
+var TREND_MONTHS = 6;
+
+var PERIOD_PRESETS = [
+  { key:"month",     label:"Этот месяц" },
+  { key:"lastMonth", label:"Прошлый месяц" },
+  { key:"3m",        label:"3 месяца" },
+  { key:"year",      label:"Год" },
+  { key:"all",       label:"Всё время" }
+];
+
+var state = { operations:[], assets:[] };
+var currentPeriod = "month";
+
+/* ---------- storage ---------- */
+
+function loadState(){
+  try{
+    var raw = localStorage.getItem(STORAGE_KEY);
+    if(raw){
+      var parsed = JSON.parse(raw);
+      if(parsed && Array.isArray(parsed.operations) && Array.isArray(parsed.assets)){
+        state = parsed;
+      }
+    }
+  }catch(e){}
+}
+
+function saveState(){
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+function uid(){
+  return Date.now().toString(36) + Math.random().toString(36).slice(2,8);
+}
+
+/* ---------- utils ---------- */
+
+function formatMoney(n){
+  n = Math.round(n || 0);
+  return n.toLocaleString("ru-RU") + " ₸";
+}
+
+function formatSigned(n){
+  var s = formatMoney(Math.abs(n));
+  return (n < 0 ? "-" : "+") + s;
+}
+
+function todayStr(){
+  var d = new Date();
+  var m = String(d.getMonth()+1).padStart(2,"0");
+  var day = String(d.getDate()).padStart(2,"0");
+  return d.getFullYear() + "-" + m + "-" + day;
+}
+
+function sourceInfo(key){
+  for(var i=0;i<SOURCES.length;i++){ if(SOURCES[i].key === key) return SOURCES[i]; }
+  return SOURCES[0];
+}
+
+function monthKey(dateStr){
+  return dateStr.slice(0,7); // YYYY-MM
+}
+
+function monthLabel(key){
+  var parts = key.split("-");
+  var mi = parseInt(parts[1],10) - 1;
+  var yy = parts[0].slice(2);
+  return MONTH_NAMES[mi] + " " + yy;
+}
+
+function lastNMonthKeys(n){
+  var out = [];
+  var d = new Date();
+  d.setDate(1);
+  for(var i=n-1;i>=0;i--){
+    var dt = new Date(d.getFullYear(), d.getMonth()-i, 1);
+    var m = String(dt.getMonth()+1).padStart(2,"0");
+    out.push(dt.getFullYear() + "-" + m);
+  }
+  return out;
+}
+
+function periodRange(key){
+  var now = new Date();
+  var start, end;
+  if(key === "month"){
+    start = new Date(now.getFullYear(), now.getMonth(), 1);
+    end = new Date(now.getFullYear(), now.getMonth()+1, 1);
+  } else if(key === "lastMonth"){
+    start = new Date(now.getFullYear(), now.getMonth()-1, 1);
+    end = new Date(now.getFullYear(), now.getMonth(), 1);
+  } else if(key === "3m"){
+    start = new Date(now.getFullYear(), now.getMonth()-2, 1);
+    end = new Date(now.getFullYear(), now.getMonth()+1, 1);
+  } else if(key === "year"){
+    start = new Date(now.getFullYear(), 0, 1);
+    end = new Date(now.getFullYear()+1, 0, 1);
+  } else {
+    return null; // all time
+  }
+  return { start:start, end:end };
+}
+
+function inRange(dateStr, range){
+  if(!range) return true;
+  var d = new Date(dateStr);
+  return d >= range.start && d < range.end;
+}
+
+function niceMax(v){
+  if(v <= 0) return 10;
+  var pow = Math.pow(10, Math.floor(Math.log10(v)));
+  var n = v / pow;
+  var nice;
+  if(n <= 1) nice = 1;
+  else if(n <= 2) nice = 2;
+  else if(n <= 5) nice = 5;
+  else nice = 10;
+  return nice * pow;
+}
+
+/* ---------- tabs ---------- */
+
+document.querySelectorAll(".tab-btn").forEach(function(btn){
+  btn.addEventListener("click", function(){
+    document.querySelectorAll(".tab-btn").forEach(function(b){ b.classList.remove("active"); });
+    document.querySelectorAll(".tab-panel").forEach(function(p){ p.classList.remove("active"); });
+    btn.classList.add("active");
+    document.getElementById("tab-" + btn.dataset.tab).classList.add("active");
+  });
+});
+
+/* ---------- operations form ---------- */
+
+var opDate = document.getElementById("opDate");
+var opSource = document.getElementById("opSource");
+var opCategory = document.getElementById("opCategory");
+var opAmount = document.getElementById("opAmount");
+var opComment = document.getElementById("opComment");
+var opForm = document.getElementById("opForm");
+var currentOpType = "expense";
+
+opDate.value = todayStr();
+
+document.querySelectorAll("#opForm .seg-btn").forEach(function(btn){
+  btn.addEventListener("click", function(){
+    document.querySelectorAll("#opForm .seg-btn").forEach(function(b){ b.classList.remove("active"); });
+    btn.classList.add("active");
+    currentOpType = btn.dataset.type;
+    updateCategoryOptions();
+  });
+});
+
+opSource.addEventListener("change", updateCategoryOptions);
+
+function updateCategoryOptions(){
+  var dl = document.getElementById("categoryOptions");
+  dl.innerHTML = "";
+  var list = (CATEGORY_SUGGESTIONS[opSource.value] || {})[currentOpType] || [];
+  list.forEach(function(c){
+    var opt = document.createElement("option");
+    opt.value = c;
+    dl.appendChild(opt);
+  });
+}
+updateCategoryOptions();
+
+opForm.addEventListener("submit", function(e){
+  e.preventDefault();
+  var amount = parseFloat(opAmount.value);
+  if(!amount || amount <= 0) return;
+  state.operations.push({
+    id: uid(),
+    date: opDate.value || todayStr(),
+    type: currentOpType,
+    source: opSource.value,
+    category: (opCategory.value || "Прочее").trim(),
+    amount: amount,
+    comment: (opComment.value || "").trim()
+  });
+  saveState();
+  opAmount.value = "";
+  opComment.value = "";
+  opCategory.value = "";
+  renderOperations();
+  renderDashboard();
+});
+
+function renderOperations(){
+  var list = document.getElementById("opList");
+  var count = document.getElementById("opCount");
+  var ops = state.operations.slice().sort(function(a,b){ return b.date.localeCompare(a.date); });
+  count.textContent = ops.length ? (ops.length + " шт.") : "";
+  list.innerHTML = "";
+  if(!ops.length){
+    var empty = document.createElement("div");
+    empty.className = "empty-state";
+    empty.textContent = "Пока нет операций. Добавьте первую выше.";
+    list.appendChild(empty);
+    return;
+  }
+  ops.forEach(function(op){
+    var row = document.createElement("div");
+    row.className = "op-row";
+
+    var main = document.createElement("div");
+    main.className = "op-main";
+    var cat = document.createElement("div");
+    cat.className = "op-cat";
+    cat.textContent = op.category;
+    var meta = document.createElement("div");
+    meta.className = "op-meta";
+    var src = sourceInfo(op.source);
+    meta.textContent = op.date + " · " + src.label + (op.comment ? " · " + op.comment : "");
+    main.appendChild(cat);
+    main.appendChild(meta);
+
+    var right = document.createElement("div");
+    right.className = "op-right";
+    var amt = document.createElement("div");
+    amt.className = "op-amount " + op.type;
+    amt.textContent = (op.type === "income" ? "+" : "−") + formatMoney(op.amount);
+    var del = document.createElement("button");
+    del.className = "del-btn";
+    del.type = "button";
+    del.textContent = "×";
+    del.addEventListener("click", function(){
+      if(confirm("Удалить операцию «" + op.category + "»?")){
+        state.operations = state.operations.filter(function(o){ return o.id !== op.id; });
+        saveState();
+        renderOperations();
+        renderDashboard();
+      }
+    });
+    right.appendChild(amt);
+    right.appendChild(del);
+
+    row.appendChild(main);
+    row.appendChild(right);
+    list.appendChild(row);
+  });
+}
+
+/* ---------- assets form ---------- */
+
+var assetForm = document.getElementById("assetForm");
+
+assetForm.addEventListener("submit", function(e){
+  e.preventDefault();
+  var amount = parseFloat(document.getElementById("assetAmount").value);
+  if(!amount || amount <= 0) return;
+  state.assets.push({
+    id: uid(),
+    type: document.getElementById("assetType").value,
+    name: (document.getElementById("assetName").value || "").trim(),
+    amount: amount,
+    note: (document.getElementById("assetNote").value || "").trim(),
+    updated: todayStr()
+  });
+  saveState();
+  document.getElementById("assetName").value = "";
+  document.getElementById("assetAmount").value = "";
+  document.getElementById("assetNote").value = "";
+  renderAssets();
+  renderDashboard();
+});
+
+function renderAssets(){
+  renderAssetGroup("deposit", "depositList", "depositTotal");
+  renderAssetGroup("securities", "securitiesList", "securitiesTotal");
+  var total = state.assets.reduce(function(s,a){ return s + a.amount; }, 0);
+  document.getElementById("assetsGrandTotal").textContent = formatMoney(total);
+}
+
+function renderAssetGroup(type, listId, totalId){
+  var items = state.assets.filter(function(a){ return a.type === type; });
+  var list = document.getElementById(listId);
+  var totalEl = document.getElementById(totalId);
+  var total = items.reduce(function(s,a){ return s + a.amount; }, 0);
+  totalEl.textContent = items.length ? formatMoney(total) : "";
+  list.innerHTML = "";
+  if(!items.length){
+    var empty = document.createElement("div");
+    empty.className = "empty-state";
+    empty.textContent = "Пока не добавлено.";
+    list.appendChild(empty);
+    return;
+  }
+  items.forEach(function(a){
+    var row = document.createElement("div");
+    row.className = "op-row";
+    var main = document.createElement("div");
+    main.className = "op-main";
+    var name = document.createElement("div");
+    name.className = "op-cat";
+    name.textContent = a.name;
+    var meta = document.createElement("div");
+    meta.className = "op-meta";
+    meta.textContent = "Обновлено " + a.updated + (a.note ? " · " + a.note : "");
+    main.appendChild(name);
+    main.appendChild(meta);
+
+    var right = document.createElement("div");
+    right.className = "op-right";
+    var amt = document.createElement("div");
+    amt.className = "op-amount";
+    amt.textContent = formatMoney(a.amount);
+    var del = document.createElement("button");
+    del.className = "del-btn";
+    del.type = "button";
+    del.textContent = "×";
+    del.addEventListener("click", function(){
+      if(confirm("Удалить «" + a.name + "»?")){
+        state.assets = state.assets.filter(function(x){ return x.id !== a.id; });
+        saveState();
+        renderAssets();
+        renderDashboard();
+      }
+    });
+    right.appendChild(amt);
+    right.appendChild(del);
+    row.appendChild(main);
+    row.appendChild(right);
+    list.appendChild(row);
+  });
+}
+
+/* ---------- dashboard ---------- */
+
+function renderPeriodRow(){
+  var row = document.getElementById("periodRow");
+  row.innerHTML = "";
+  PERIOD_PRESETS.forEach(function(p){
+    var btn = document.createElement("button");
+    btn.className = "period-btn" + (p.key === currentPeriod ? " active" : "");
+    btn.textContent = p.label;
+    btn.addEventListener("click", function(){
+      currentPeriod = p.key;
+      renderDashboard();
+    });
+    row.appendChild(btn);
+  });
+}
+
+function statTile(label, value, cls){
+  var tile = document.createElement("div");
+  tile.className = "stat-tile";
+  var l = document.createElement("div");
+  l.className = "label";
+  l.textContent = label;
+  var v = document.createElement("div");
+  v.className = "value" + (cls ? " " + cls : "");
+  v.textContent = value;
+  tile.appendChild(l);
+  tile.appendChild(v);
+  return tile;
+}
+
+function renderDashboard(){
+  renderPeriodRow();
+
+  var range = periodRange(currentPeriod);
+  var ops = state.operations.filter(function(o){ return inRange(o.date, range); });
+
+  var income = ops.filter(function(o){ return o.type === "income"; }).reduce(function(s,o){ return s+o.amount; },0);
+  var expense = ops.filter(function(o){ return o.type === "expense"; }).reduce(function(s,o){ return s+o.amount; },0);
+  var net = income - expense;
+  var capital = state.assets.reduce(function(s,a){ return s+a.amount; },0);
+
+  var kpiRow = document.getElementById("kpiRow");
+  kpiRow.innerHTML = "";
+  kpiRow.appendChild(statTile("Доходы", formatMoney(income)));
+  kpiRow.appendChild(statTile("Расходы", formatMoney(expense)));
+  kpiRow.appendChild(statTile("Прибыль", formatSigned(net), net >= 0 ? "good" : "bad"));
+  kpiRow.appendChild(statTile("Капитал (депозиты + бумаги)", formatMoney(capital)));
+
+  renderTrendChart();
+  renderCategoryChart(ops);
+  renderSourceChart(ops, "income", "incomeSourceChart");
+  renderSourceChart(ops, "expense", "expenseSourceChart");
+  renderShopSection(range);
+}
+
+function renderTrendChart(){
+  var months = lastNMonthKeys(TREND_MONTHS);
+  var incomeVals = months.map(function(){ return 0; });
+  var expenseVals = months.map(function(){ return 0; });
+  state.operations.forEach(function(o){
+    var mk = monthKey(o.date);
+    var idx = months.indexOf(mk);
+    if(idx === -1) return;
+    if(o.type === "income") incomeVals[idx] += o.amount;
+    else expenseVals[idx] += o.amount;
+  });
+  lineChart(document.getElementById("trendChart"), months, [
+    { name:"Доходы", color:"#2a78d6", values:incomeVals },
+    { name:"Расходы", color:"#e34948", values:expenseVals }
+  ]);
+}
+
+function renderCategoryChart(ops){
+  var map = {};
+  ops.filter(function(o){ return o.type === "expense"; }).forEach(function(o){
+    map[o.category] = (map[o.category] || 0) + o.amount;
+  });
+  var items = Object.keys(map).map(function(k){ return { label:k, value:map[k], color:"#2a78d6" }; });
+  items.sort(function(a,b){ return b.value - a.value; });
+  items = items.slice(0, 8);
+  hBarChart(document.getElementById("categoryChart"), items, "Нет расходов за выбранный период.");
+}
+
+function renderSourceChart(ops, type, containerId){
+  var items = SOURCES.map(function(s){
+    var sum = ops.filter(function(o){ return o.source === s.key && o.type === type; })
+                 .reduce(function(a,o){ return a+o.amount; }, 0);
+    return { label:s.label, value:sum, color:s.hex };
+  }).filter(function(i){ return i.value > 0; });
+  var emptyMsg = type === "income" ? "Нет доходов за выбранный период." : "Нет расходов за выбранный период.";
+  hBarChart(document.getElementById(containerId), items, emptyMsg);
+}
+
+function renderShopSection(range){
+  var shopOps = state.operations.filter(function(o){ return o.source === "shop" && inRange(o.date, range); });
+  var income = shopOps.filter(function(o){ return o.type === "income"; }).reduce(function(s,o){ return s+o.amount; },0);
+  var expense = shopOps.filter(function(o){ return o.type === "expense"; }).reduce(function(s,o){ return s+o.amount; },0);
+  var profit = income - expense;
+  var margin = income > 0 ? (profit / income * 100) : 0;
+
+  var row = document.getElementById("shopKpiRow");
+  row.innerHTML = "";
+  row.appendChild(statTile("Доходы магазина", formatMoney(income)));
+  row.appendChild(statTile("Расходы магазина", formatMoney(expense)));
+  row.appendChild(statTile("Прибыль магазина", formatSigned(profit), profit >= 0 ? "good" : "bad"));
+  row.appendChild(statTile("Маржа", margin.toFixed(0) + " %", margin >= 0 ? "good" : "bad"));
+
+  var months = lastNMonthKeys(TREND_MONTHS);
+  var profits = months.map(function(mk){
+    var inc = 0, exp = 0;
+    state.operations.forEach(function(o){
+      if(o.source === "shop" && monthKey(o.date) === mk){
+        if(o.type === "income") inc += o.amount; else exp += o.amount;
+      }
+    });
+    return inc - exp;
+  });
+  divergingColumnChart(document.getElementById("shopTrendChart"), months, profits);
+}
+
+/* ---------- SVG chart helpers ---------- */
+
+var NS = "http://www.w3.org/2000/svg";
+
+function svgEl(tag, attrs){
+  var el = document.createElementNS(NS, tag);
+  for(var k in attrs){ el.setAttribute(k, attrs[k]); }
+  return el;
+}
+
+function showTooltip(x, y, rows, title){
+  var tt = document.getElementById("tooltip");
+  tt.innerHTML = "";
+  if(title){
+    var t = document.createElement("div");
+    t.className = "tt-title";
+    t.textContent = title;
+    tt.appendChild(t);
+  }
+  rows.forEach(function(r){
+    var row = document.createElement("div");
+    row.className = "tt-row";
+    var key = document.createElement("span");
+    key.className = "tt-key";
+    key.style.background = r.color;
+    var name = document.createElement("span");
+    name.textContent = r.name;
+    var val = document.createElement("span");
+    val.className = "tt-val";
+    val.textContent = r.value;
+    row.appendChild(key);
+    row.appendChild(name);
+    row.appendChild(val);
+    tt.appendChild(row);
+  });
+  tt.hidden = false;
+  var ttw = 220;
+  var left = x + 14;
+  if(left + ttw > window.innerWidth) left = x - ttw - 14;
+  tt.style.left = Math.max(8,left) + "px";
+  tt.style.top = (y - 10) + "px";
+}
+
+function hideTooltip(){
+  document.getElementById("tooltip").hidden = true;
+}
+
+function emptyBox(container, msg){
+  container.innerHTML = "";
+  var d = document.createElement("div");
+  d.className = "empty-state";
+  d.textContent = msg;
+  container.appendChild(d);
+}
+
+/* Horizontal bar chart: items = [{label,value,color}] */
+function hBarChart(container, items, emptyMsg){
+  container.innerHTML = "";
+  if(!items.length){ emptyBox(container, emptyMsg || "Нет данных."); return; }
+
+  var W = 300, rowH = 30, padTop = 6, padBottom = 6;
+  var H = items.length * rowH + padTop + padBottom;
+  var labelW = 96, padRight = 54;
+  var barAreaW = W - labelW - padRight;
+  var max = niceMax(Math.max.apply(null, items.map(function(i){ return i.value; })));
+
+  var svg = svgEl("svg", { viewBox:"0 0 " + W + " " + H, role:"img" });
+
+  items.forEach(function(item, i){
+    var y = padTop + i*rowH;
+    var barH = 16;
+    var barY = y + (rowH-barH)/2;
+    var w = max > 0 ? (item.value/max) * barAreaW : 0;
+    w = Math.max(w, item.value > 0 ? 2 : 0);
+
+    var label = svgEl("text", { x:0, y:y+rowH/2+4, "font-size":"11", fill:"#52514e" });
+    label.textContent = item.label.length > 14 ? item.label.slice(0,13)+"…" : item.label;
+    svg.appendChild(label);
+
+    var track = svgEl("rect", { x:labelW, y:barY, width:barAreaW, height:barH, rx:4, fill:"#e1e0d9", opacity:"0.4" });
+    svg.appendChild(track);
+
+    var bar = svgEl("rect", { x:labelW, y:barY, width:w, height:barH, rx:4, fill:item.color, style:"cursor:pointer" });
+    svg.appendChild(bar);
+
+    var valLabel = svgEl("text", { x:labelW+barAreaW+8, y:y+rowH/2+4, "font-size":"11", "font-weight":"700", fill:"#0b0b0b" });
+    valLabel.textContent = formatMoney(item.value);
+    svg.appendChild(valLabel);
+
+    var hit = svgEl("rect", { x:labelW, y:y, width:barAreaW+padRight, height:rowH, fill:"transparent", style:"cursor:pointer" });
+    hit.addEventListener("pointermove", function(e){
+      showTooltip(e.clientX, e.clientY, [{ name:item.label, value:formatMoney(item.value), color:item.color }]);
+    });
+    hit.addEventListener("pointerleave", hideTooltip);
+    svg.appendChild(hit);
+  });
+
+  container.appendChild(svg);
+}
+
+/* Line chart: months=[keys], series=[{name,color,values}] */
+function lineChart(container, months, series){
+  container.innerHTML = "";
+  var hasData = series.some(function(s){ return s.values.some(function(v){ return v > 0; }); });
+  if(!hasData){ emptyBox(container, "Пока недостаточно данных."); return; }
+
+  var W = 300, H = 190, padL = 40, padR = 12, padT = 14, padB = 28;
+  var chartW = W - padL - padR, chartH = H - padT - padB;
+  var maxVal = niceMax(Math.max.apply(null, series.reduce(function(a,s){ return a.concat(s.values); }, [0])));
+  var n = months.length;
+
+  function xAt(i){ return padL + (n>1 ? i*(chartW/(n-1)) : chartW/2); }
+  function yAt(v){ return padT + chartH - (maxVal>0 ? (v/maxVal)*chartH : 0); }
+
+  var svg = svgEl("svg", { viewBox:"0 0 " + W + " " + H, role:"img" });
+
+  // gridlines
+  var steps = 4;
+  for(var g=0; g<=steps; g++){
+    var val = maxVal * g/steps;
+    var y = yAt(val);
+    svg.appendChild(svgEl("line", { x1:padL, x2:W-padR, y1:y, y2:y, stroke:"#e1e0d9", "stroke-width":"1" }));
+    var lbl = svgEl("text", { x:padL-6, y:y+3, "font-size":"9", fill:"#898781", "text-anchor":"end" });
+    lbl.textContent = val >= 1000 ? Math.round(val/1000) + "к" : Math.round(val);
+    svg.appendChild(lbl);
+  }
+
+  // x labels
+  months.forEach(function(mk, i){
+    var lbl = svgEl("text", { x:xAt(i), y:H-8, "font-size":"9", fill:"#898781", "text-anchor":"middle" });
+    lbl.textContent = monthLabel(mk);
+    svg.appendChild(lbl);
+  });
+
+  series.forEach(function(s){
+    var pts = s.values.map(function(v,i){ return xAt(i) + "," + yAt(v); }).join(" ");
+    svg.appendChild(svgEl("polyline", { points:pts, fill:"none", stroke:s.color, "stroke-width":"2", "stroke-linejoin":"round", "stroke-linecap":"round" }));
+    s.values.forEach(function(v,i){
+      svg.appendChild(svgEl("circle", { cx:xAt(i), cy:yAt(v), r:4, fill:s.color, stroke:"#fcfcfb", "stroke-width":"2" }));
+    });
+  });
+
+  // hover crosshair
+  var crosshair = svgEl("line", { x1:0, x2:0, y1:padT, y2:padT+chartH, stroke:"#c3c2b7", "stroke-width":"1", visibility:"hidden" });
+  svg.appendChild(crosshair);
+
+  var overlay = svgEl("rect", { x:padL, y:padT, width:chartW, height:chartH, fill:"transparent" });
+  overlay.addEventListener("pointermove", function(e){
+    var rect = svg.getBoundingClientRect();
+    var scale = W / rect.width;
+    var localX = (e.clientX - rect.left) * scale;
+    var idx = n>1 ? Math.round((localX - padL) / (chartW/(n-1))) : 0;
+    idx = Math.max(0, Math.min(n-1, idx));
+    var cx = xAt(idx);
+    crosshair.setAttribute("x1", cx);
+    crosshair.setAttribute("x2", cx);
+    crosshair.setAttribute("visibility", "visible");
+    var rows = series.map(function(s){ return { name:s.name, value:formatMoney(s.values[idx]), color:s.color }; });
+    showTooltip(e.clientX, e.clientY, rows, monthLabel(months[idx]));
+  });
+  overlay.addEventListener("pointerleave", function(){
+    crosshair.setAttribute("visibility","hidden");
+    hideTooltip();
+  });
+  svg.appendChild(overlay);
+
+  container.appendChild(svg);
+
+  var legend = document.createElement("div");
+  legend.className = "legend";
+  series.forEach(function(s){
+    var item = document.createElement("div");
+    item.className = "legend-item";
+    var sw = document.createElement("span");
+    sw.className = "legend-swatch";
+    sw.style.background = s.color;
+    var name = document.createElement("span");
+    name.textContent = s.name;
+    item.appendChild(sw);
+    item.appendChild(name);
+    legend.appendChild(item);
+  });
+  container.appendChild(legend);
+}
+
+/* Diverging column chart: months=[keys], values=[numbers] */
+function divergingColumnChart(container, months, values){
+  container.innerHTML = "";
+  var hasData = values.some(function(v){ return v !== 0; });
+  if(!hasData){ emptyBox(container, "Пока недостаточно данных по магазину."); return; }
+
+  var W = 300, H = 170, padL = 34, padR = 12, padT = 10, padB = 22;
+  var chartW = W - padL - padR, chartH = H - padT - padB;
+  var midY = padT + chartH/2;
+  var maxAbs = niceMax(Math.max.apply(null, values.map(function(v){ return Math.abs(v); })));
+  var n = values.length;
+  var colW = chartW / n;
+  var barW = Math.min(24, colW*0.5);
+
+  var svg = svgEl("svg", { viewBox:"0 0 " + W + " " + H, role:"img" });
+
+  svg.appendChild(svgEl("line", { x1:padL, x2:W-padR, y1:midY, y2:midY, stroke:"#c3c2b7", "stroke-width":"1" }));
+
+  values.forEach(function(v, i){
+    var cx = padL + colW*i + colW/2;
+    var h = maxAbs > 0 ? (Math.abs(v)/maxAbs) * (chartH/2) : 0;
+    var color = v >= 0 ? "#2a78d6" : "#e34948";
+    var y = v >= 0 ? midY - h : midY;
+    var rect = svgEl("rect", { x:cx-barW/2, y:y, width:barW, height:Math.max(h,1), rx:4, fill:color, style:"cursor:pointer" });
+    svg.appendChild(rect);
+
+    var lbl = svgEl("text", { x:cx, y:H-6, "font-size":"9", fill:"#898781", "text-anchor":"middle" });
+    lbl.textContent = monthLabel(months[i]);
+    svg.appendChild(lbl);
+
+    var hit = svgEl("rect", { x:padL+colW*i, y:padT, width:colW, height:chartH, fill:"transparent", style:"cursor:pointer" });
+    hit.addEventListener("pointermove", function(e){
+      showTooltip(e.clientX, e.clientY, [{ name:"Прибыль", value:formatSigned(v), color:color }], monthLabel(months[i]));
+    });
+    hit.addEventListener("pointerleave", hideTooltip);
+    svg.appendChild(hit);
+  });
+
+  container.appendChild(svg);
+}
+
+/* ---------- export / import ---------- */
+
+function downloadFile(filename, content, mime){
+  var blob = new Blob([content], { type:mime });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+document.getElementById("exportJsonBtn").addEventListener("click", function(){
+  var payload = { operations:state.operations, assets:state.assets, exportedAt:new Date().toISOString() };
+  downloadFile("finance-backup-" + todayStr() + ".json", JSON.stringify(payload, null, 2), "application/json");
+});
+
+document.getElementById("exportCsvBtn").addEventListener("click", function(){
+  function esc(s){ return '"' + String(s).replace(/"/g,'""') + '"'; }
+  var lines = ["Дата,Тип,Источник,Категория,Сумма,Комментарий"];
+  state.operations.slice().sort(function(a,b){ return a.date.localeCompare(b.date); }).forEach(function(o){
+    lines.push([
+      o.date,
+      o.type === "income" ? "Доход" : "Расход",
+      esc(sourceInfo(o.source).label),
+      esc(o.category),
+      o.amount,
+      esc(o.comment || "")
+    ].join(","));
+  });
+  downloadFile("operations-" + todayStr() + ".csv", "﻿" + lines.join("\r\n"), "text/csv;charset=utf-8");
+});
+
+document.getElementById("importFile").addEventListener("change", function(e){
+  var file = e.target.files[0];
+  if(!file) return;
+  var reader = new FileReader();
+  reader.onload = function(ev){
+    try{
+      var data = JSON.parse(ev.target.result);
+      if(!data || !Array.isArray(data.operations) || !Array.isArray(data.assets)){
+        alert("Файл не похож на резервную копию этого приложения.");
+        return;
+      }
+      if(confirm("Заменить текущие данные на данные из файла? Это действие нельзя отменить.")){
+        state = { operations:data.operations, assets:data.assets };
+        saveState();
+        location.reload();
+      }
+    }catch(err){
+      alert("Не удалось прочитать файл: " + err.message);
+    }
+  };
+  reader.readAsText(file);
+});
+
+/* ---------- init ---------- */
+
+loadState();
+renderOperations();
+renderAssets();
+renderDashboard();
+
+})();
+</script>
+
+</body>
+</html>
