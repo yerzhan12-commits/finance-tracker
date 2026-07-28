@@ -183,6 +183,16 @@
         <div id="expenseSourceChart" class="chart-box"></div>
       </div>
 
+      <div class="card">
+        <h2>Доходы по счетам</h2>
+        <div id="incomeAccountChart" class="chart-box"></div>
+      </div>
+
+      <div class="card">
+        <h2>Расходы по счетам</h2>
+        <div id="expenseAccountChart" class="chart-box"></div>
+      </div>
+
       <div class="card shop-card">
         <h2>Прибыльность магазина</h2>
         <div class="kpi-row" id="shopKpiRow"></div>
@@ -219,6 +229,10 @@
           <datalist id="supplierOptions"></datalist>
         </div>
         <div class="field">
+          <label>Счёт</label>
+          <select id="opAccount"></select>
+        </div>
+        <div class="field">
           <label>Категория</label>
           <input type="text" id="opCategory" list="categoryOptions" placeholder="Например: Продукты" required>
           <datalist id="categoryOptions"></datalist>
@@ -252,6 +266,21 @@
 
       <div class="card">
         <div class="list-header">
+          <h2>Счета</h2>
+          <span class="muted" id="accountCount"></span>
+        </div>
+        <div id="accountList"></div>
+        <div class="field" style="margin-top:12px;margin-bottom:0;">
+          <label>Новый счёт</label>
+          <div style="display:flex;gap:8px;">
+            <input type="text" id="newAccountName" placeholder="Например: Jusan, Bereke">
+            <button type="button" id="addAccountBtn" class="btn-secondary" style="width:auto;white-space:nowrap;margin-bottom:0;padding:11px 16px;">Добавить</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="list-header">
           <h2>История операций</h2>
           <span class="muted" id="opCount"></span>
         </div>
@@ -278,6 +307,13 @@
             <label>Источник</label>
             <select id="filterSource"></select>
           </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label>Счёт</label>
+            <select id="filterAccount"></select>
+          </div>
+          <div class="field"></div>
         </div>
         <div class="field" style="margin-bottom:10px;">
           <label>Поиск (категория, поставщик, комментарий)</label>
@@ -384,6 +420,14 @@ var DEFAULT_SOURCES = [
   { key:"deposit",    label:"Депозит" }
 ];
 
+var DEFAULT_ACCOUNTS = [
+  { key:"kaspi",   label:"Каспи" },
+  { key:"halyk",   label:"Халык" },
+  { key:"bcc",     label:"БЦК" },
+  { key:"freedom", label:"Фридом" },
+  { key:"cash",    label:"Наличные" }
+];
+
 var CATEGORY_SUGGESTIONS = {
   shop:       { income:["Продажи опт","Продажи розница","Прочий доход"], expense:["Закупка товара","Карго","Қайтарым","Дүкен коммуналка","Аренда","Реклама","Логистика","Зарплата","Прочее"] },
   personal:   { income:["Прочий доход"], expense:["Ипотека","Несие","Азық-түлік","АИ (топливо)","Көлік ТО","Көлік құаттау","Кафе","Киім","Кино","Мектеп-бақша","Дәрігер","Дәріхана","Алименты","Сыйлық","Ұшақ-поезд","Комуналка","Садақа","Әке","Анашым","Әмина","Рамазан","Жалғас Али","Прочее"] },
@@ -416,7 +460,7 @@ var PERIOD_PRESETS = [
   { key:"all",       label:"Всё время" }
 ];
 
-var state = { operations:[], assets:[], sources:DEFAULT_SOURCES.slice() };
+var state = { operations:[], assets:[], sources:DEFAULT_SOURCES.slice(), accounts:DEFAULT_ACCOUNTS.slice() };
 var currentPeriod = "month";
 
 /* ---------- storage ---------- */
@@ -430,6 +474,9 @@ function loadState(){
         state = parsed;
         if(!Array.isArray(state.sources) || !state.sources.length){
           state.sources = DEFAULT_SOURCES.slice();
+        }
+        if(!Array.isArray(state.accounts) || !state.accounts.length){
+          state.accounts = DEFAULT_ACCOUNTS.slice();
         }
       }
     }
@@ -465,6 +512,11 @@ function todayStr(){
 
 function sourceInfo(key){
   for(var i=0;i<state.sources.length;i++){ if(state.sources[i].key === key) return state.sources[i]; }
+  return { key:key, label:key };
+}
+
+function accountInfo(key){
+  for(var i=0;i<state.accounts.length;i++){ if(state.accounts[i].key === key) return state.accounts[i]; }
   return { key:key, label:key };
 }
 
@@ -547,6 +599,7 @@ var opDate = document.getElementById("opDate");
 var opSource = document.getElementById("opSource");
 var opSupplier = document.getElementById("opSupplier");
 var opSupplierField = document.getElementById("opSupplierField");
+var opAccount = document.getElementById("opAccount");
 var opCategory = document.getElementById("opCategory");
 var opAmount = document.getElementById("opAmount");
 var opComment = document.getElementById("opComment");
@@ -619,18 +672,18 @@ function updateAssetNameOptions(){
   });
 }
 
-/* ---------- sources (dynamic, user-managed) ---------- */
+/* ---------- sources & accounts (dynamic, user-managed) ---------- */
 
-function populateSourceSelect(selectEl, includeAllOption){
+function populateListSelect(selectEl, list, includeAllOption, allLabel){
   var prev = selectEl.value;
   selectEl.innerHTML = "";
   if(includeAllOption){
     var allOpt = document.createElement("option");
     allOpt.value = "";
-    allOpt.textContent = "Все источники";
+    allOpt.textContent = allLabel;
     selectEl.appendChild(allOpt);
   }
-  state.sources.forEach(function(s){
+  list.forEach(function(s){
     var opt = document.createElement("option");
     opt.value = s.key;
     opt.textContent = s.label;
@@ -640,10 +693,23 @@ function populateSourceSelect(selectEl, includeAllOption){
   if(stillValid) selectEl.value = prev;
 }
 
+function populateSourceSelect(selectEl, includeAllOption){
+  populateListSelect(selectEl, state.sources, includeAllOption, "Все источники");
+}
+
+function populateAccountSelect(selectEl, includeAllOption){
+  populateListSelect(selectEl, state.accounts, includeAllOption, "Все счета");
+}
+
 function renderSourceSelect(){
   populateSourceSelect(opSource, false);
   populateSourceSelect(document.getElementById("filterSource"), true);
   onSourceChange();
+}
+
+function renderAccountSelect(){
+  populateAccountSelect(opAccount, false);
+  populateAccountSelect(document.getElementById("filterAccount"), true);
 }
 
 function renderSourceList(){
@@ -724,6 +790,82 @@ document.getElementById("addSourceBtn").addEventListener("click", function(){
   renderSourceSelect();
 });
 
+function renderAccountList(){
+  var list = document.getElementById("accountList");
+  var count = document.getElementById("accountCount");
+  count.textContent = state.accounts.length + " шт.";
+  list.innerHTML = "";
+  state.accounts.forEach(function(a){
+    var row = document.createElement("div");
+    row.className = "op-row";
+    var main = document.createElement("div");
+    main.className = "op-main";
+    var name = document.createElement("div");
+    name.className = "op-cat";
+    name.textContent = a.label;
+    main.appendChild(name);
+    row.appendChild(main);
+
+    var edit = document.createElement("button");
+    edit.className = "del-btn";
+    edit.type = "button";
+    edit.textContent = "✎";
+    edit.addEventListener("click", function(){
+      var newName = prompt("Новое название счёта:", a.label);
+      if(newName === null) return;
+      newName = newName.trim();
+      if(!newName) return;
+      var clash = state.accounts.some(function(x){ return x.key !== a.key && x.label.toLowerCase() === newName.toLowerCase(); });
+      if(clash){
+        alert("Счёт с таким названием уже есть.");
+        return;
+      }
+      a.label = newName;
+      saveState();
+      renderAccountList();
+      renderAccountSelect();
+      renderOperations();
+      renderDashboard();
+    });
+    row.appendChild(edit);
+
+    var del = document.createElement("button");
+    del.className = "del-btn";
+    del.type = "button";
+    del.textContent = "×";
+    del.addEventListener("click", function(){
+      var used = state.operations.some(function(o){ return o.account === a.key; });
+      if(used){
+        alert("Нельзя удалить «" + a.label + "» — этот счёт используется в операциях. Сначала удалите или измените их во вкладке «Операции».");
+        return;
+      }
+      if(confirm("Удалить счёт «" + a.label + "»?")){
+        state.accounts = state.accounts.filter(function(x){ return x.key !== a.key; });
+        saveState();
+        renderAccountList();
+        renderAccountSelect();
+      }
+    });
+    row.appendChild(del);
+    list.appendChild(row);
+  });
+}
+
+document.getElementById("addAccountBtn").addEventListener("click", function(){
+  var input = document.getElementById("newAccountName");
+  var name = (input.value || "").trim();
+  if(!name) return;
+  if(state.accounts.some(function(a){ return a.label.toLowerCase() === name.toLowerCase(); })){
+    alert("Счёт с таким названием уже есть.");
+    return;
+  }
+  state.accounts.push({ key: uid(), label: name });
+  saveState();
+  input.value = "";
+  renderAccountList();
+  renderAccountSelect();
+});
+
 function clearOpFormInputs(){
   opAmount.value = "";
   opComment.value = "";
@@ -752,6 +894,7 @@ function startEditOp(op){
   opSource.value = op.source;
   onSourceChange();
   opSupplier.value = op.supplier || "";
+  opAccount.value = op.account || "";
   opCategory.value = op.category;
   opAmount.value = op.amount;
   opComment.value = op.comment || "";
@@ -769,6 +912,7 @@ opForm.addEventListener("submit", function(e){
     type: currentOpType,
     source: opSource.value,
     supplier: opSource.value === "shop" ? (opSupplier.value || "").trim() : "",
+    account: opAccount.value,
     category: (opCategory.value || "Прочее").trim(),
     amount: amount,
     comment: (opComment.value || "").trim()
@@ -799,6 +943,7 @@ function renderOperations(){
   var fTo = document.getElementById("filterTo").value;
   var fType = document.getElementById("filterType").value;
   var fSource = document.getElementById("filterSource").value;
+  var fAccount = document.getElementById("filterAccount").value;
   var fSearch = document.getElementById("filterSearch").value.trim().toLowerCase();
 
   var ops = state.operations.filter(function(o){
@@ -806,6 +951,7 @@ function renderOperations(){
     if(fTo && o.date > fTo) return false;
     if(fType && o.type !== fType) return false;
     if(fSource && o.source !== fSource) return false;
+    if(fAccount && o.account !== fAccount) return false;
     if(fSearch){
       var hay = (o.category + " " + (o.supplier || "") + " " + (o.comment || "")).toLowerCase();
       if(hay.indexOf(fSearch) === -1) return false;
@@ -834,7 +980,8 @@ function renderOperations(){
     var meta = document.createElement("div");
     meta.className = "op-meta";
     var src = sourceInfo(op.source);
-    meta.textContent = op.date + " · " + src.label + (op.supplier ? " · " + op.supplier : "") + (op.comment ? " · " + op.comment : "");
+    var acc = op.account ? accountInfo(op.account) : null;
+    meta.textContent = op.date + " · " + src.label + (op.supplier ? " · " + op.supplier : "") + (acc ? " · " + acc.label : "") + (op.comment ? " · " + op.comment : "");
     main.appendChild(cat);
     main.appendChild(meta);
 
@@ -871,7 +1018,7 @@ function renderOperations(){
   });
 }
 
-["filterFrom","filterTo","filterType","filterSource","filterSearch"].forEach(function(id){
+["filterFrom","filterTo","filterType","filterSource","filterAccount","filterSearch"].forEach(function(id){
   var el = document.getElementById(id);
   el.addEventListener("input", renderOperations);
   el.addEventListener("change", renderOperations);
@@ -1015,6 +1162,8 @@ function renderDashboard(){
   renderCategoryChart(ops);
   renderSourceChart(ops, "income", "incomeSourceChart");
   renderSourceChart(ops, "expense", "expenseSourceChart");
+  renderAccountChart(ops, "income", "incomeAccountChart");
+  renderAccountChart(ops, "expense", "expenseAccountChart");
   renderShopSection(range);
 }
 
@@ -1062,6 +1211,17 @@ function renderSourceChart(ops, type, containerId){
   }).filter(function(i){ return i.value > 0; });
   items = topNWithOther(items, 8);
   var emptyMsg = type === "income" ? "Нет доходов за выбранный период." : "Нет расходов за выбранный период.";
+  hBarChart(document.getElementById(containerId), items, emptyMsg);
+}
+
+function renderAccountChart(ops, type, containerId){
+  var items = state.accounts.map(function(a){
+    var sum = ops.filter(function(o){ return o.account === a.key && o.type === type; })
+                 .reduce(function(s,o){ return s+o.amount; }, 0);
+    return { label:a.label, value:sum, color:C_BLUE };
+  }).filter(function(i){ return i.value > 0; });
+  items = topNWithOther(items, 8);
+  var emptyMsg = type === "income" ? "Нет доходов с указанным счётом за период." : "Нет расходов с указанным счётом за период.";
   hBarChart(document.getElementById(containerId), items, emptyMsg);
 }
 
@@ -1341,19 +1501,20 @@ function downloadFile(filename, content, mime){
 }
 
 document.getElementById("exportJsonBtn").addEventListener("click", function(){
-  var payload = { operations:state.operations, assets:state.assets, sources:state.sources, exportedAt:new Date().toISOString() };
+  var payload = { operations:state.operations, assets:state.assets, sources:state.sources, accounts:state.accounts, exportedAt:new Date().toISOString() };
   downloadFile("finance-backup-" + todayStr() + ".json", JSON.stringify(payload, null, 2), "application/json");
 });
 
 document.getElementById("exportCsvBtn").addEventListener("click", function(){
   function esc(s){ return '"' + String(s).replace(/"/g,'""') + '"'; }
-  var lines = ["Дата,Тип,Источник,Поставщик,Категория,Сумма,Комментарий"];
+  var lines = ["Дата,Тип,Источник,Поставщик,Счёт,Категория,Сумма,Комментарий"];
   state.operations.slice().sort(function(a,b){ return a.date.localeCompare(b.date); }).forEach(function(o){
     lines.push([
       o.date,
       o.type === "income" ? "Доход" : "Расход",
       esc(sourceInfo(o.source).label),
       esc(o.supplier || ""),
+      esc(o.account ? accountInfo(o.account).label : ""),
       esc(o.category),
       o.amount,
       esc(o.comment || "")
@@ -1374,9 +1535,10 @@ document.getElementById("importFile").addEventListener("change", function(e){
         return;
       }
       var importedSources = Array.isArray(data.sources) && data.sources.length ? data.sources : DEFAULT_SOURCES.slice();
+      var importedAccounts = Array.isArray(data.accounts) && data.accounts.length ? data.accounts : DEFAULT_ACCOUNTS.slice();
       var doReplace = confirm("Импорт файла.\n\nOK — заменить текущие данные данными из файла (текущие будут потеряны).\nОтмена — выбрать «добавить к существующим».");
       if(doReplace){
-        state = { operations: data.operations, assets: data.assets, sources: importedSources };
+        state = { operations: data.operations, assets: data.assets, sources: importedSources, accounts: importedAccounts };
         saveState();
         location.reload();
         return;
@@ -1387,6 +1549,10 @@ document.getElementById("importFile").addEventListener("change", function(e){
         importedSources.forEach(function(s){
           var exists = state.sources.some(function(x){ return x.label.toLowerCase() === s.label.toLowerCase(); });
           if(!exists) state.sources.push(s);
+        });
+        importedAccounts.forEach(function(a){
+          var exists = state.accounts.some(function(x){ return x.label.toLowerCase() === a.label.toLowerCase(); });
+          if(!exists) state.accounts.push(a);
         });
         saveState();
         location.reload();
@@ -1403,6 +1569,8 @@ document.getElementById("importFile").addEventListener("change", function(e){
 loadState();
 renderSourceSelect();
 renderSourceList();
+renderAccountSelect();
+renderAccountList();
 updateSupplierOptions();
 updateAssetNameOptions();
 renderOperations();
