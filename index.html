@@ -187,6 +187,8 @@
         <div class="kpi-row" id="shopKpiRow"></div>
         <div class="muted" style="margin-bottom:8px;">Прибыль по месяцам</div>
         <div id="shopTrendChart" class="chart-box"></div>
+        <div class="muted" style="margin:12px 0 8px;">Расходы по поставщикам</div>
+        <div id="shopSupplierChart" class="chart-box"></div>
       </div>
     </section>
 
@@ -210,6 +212,11 @@
           <label>Источник</label>
           <select id="opSource"></select>
         </div>
+        <div class="field" id="opSupplierField" style="display:none;">
+          <label>Поставщик (необязательно)</label>
+          <input type="text" id="opSupplier" list="supplierOptions" placeholder="Например: Гүлзира">
+          <datalist id="supplierOptions"></datalist>
+        </div>
         <div class="field">
           <label>Категория</label>
           <input type="text" id="opCategory" list="categoryOptions" placeholder="Например: Продукты" required>
@@ -223,7 +230,8 @@
           <label>Комментарий (необязательно)</label>
           <input type="text" id="opComment" placeholder="">
         </div>
-        <button type="submit" class="btn-primary">Добавить операцию</button>
+        <button type="submit" class="btn-primary" id="opSubmitBtn">Добавить операцию</button>
+        <button type="button" class="btn-secondary" id="opCancelEditBtn" style="display:none;margin-top:10px;">Отменить редактирование</button>
       </form>
 
       <div class="card">
@@ -246,6 +254,34 @@
           <h2>История операций</h2>
           <span class="muted" id="opCount"></span>
         </div>
+        <div class="field-row">
+          <div class="field">
+            <label>С</label>
+            <input type="date" id="filterFrom">
+          </div>
+          <div class="field">
+            <label>По</label>
+            <input type="date" id="filterTo">
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label>Тип</label>
+            <select id="filterType">
+              <option value="">Все</option>
+              <option value="income">Доход</option>
+              <option value="expense">Расход</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Источник</label>
+            <select id="filterSource"></select>
+          </div>
+        </div>
+        <div class="field" style="margin-bottom:10px;">
+          <label>Поиск (категория, поставщик, комментарий)</label>
+          <input type="text" id="filterSearch" placeholder="Например: Гүлзира">
+        </div>
         <div id="opList"></div>
       </div>
     </section>
@@ -262,7 +298,8 @@
         </div>
         <div class="field">
           <label>Название</label>
-          <input type="text" id="assetName" placeholder="Например: Депозит Kaspi" required>
+          <input type="text" id="assetName" list="assetNameOptions" placeholder="Например: Депозит Kaspi или SCHD" required>
+          <datalist id="assetNameOptions"></datalist>
         </div>
         <div class="field">
           <label>Текущая сумма, ₸</label>
@@ -308,7 +345,7 @@
       </div>
       <div class="card">
         <h2>Импорт данных</h2>
-        <p class="muted" style="margin-bottom:12px;">Загрузите ранее сохранённый файл резервной копии (JSON). Это заменит все текущие данные в этом браузере.</p>
+        <p class="muted" style="margin-bottom:12px;">Загрузите ранее сохранённый файл резервной копии (JSON). Приложение спросит: заменить текущие данные или добавить к ним.</p>
         <input type="file" id="importFile" accept="application/json">
         <div class="import-note">После импорта страница обновится автоматически.</div>
       </div>
@@ -347,12 +384,15 @@ var DEFAULT_SOURCES = [
 ];
 
 var CATEGORY_SUGGESTIONS = {
-  shop:       { income:["Продажи опт","Продажи розница","Прочий доход"], expense:["Закупка товара","Аренда","Реклама","Логистика","Зарплата","Прочее"] },
-  personal:   { income:["Прочий доход"], expense:["Продукты","Коммуналка","Транспорт","Здоровье","Одежда","Развлечения","Дом","Прочее"] },
+  shop:       { income:["Продажи опт","Продажи розница","Прочий доход"], expense:["Закупка товара","Карго","Қайтарым","Дүкен коммуналка","Аренда","Реклама","Логистика","Зарплата","Прочее"] },
+  personal:   { income:["Прочий доход"], expense:["Ипотека","Несие","Азық-түлік","АИ (топливо)","Көлік ТО","Көлік құаттау","Кафе","Киім","Кино","Мектеп-бақша","Дәрігер","Дәріхана","Алименты","Сыйлық","Ұшақ-поезд","Комуналка","Садақа","Әке","Анашым","Әмина","Рамазан","Жалғас Али","Прочее"] },
   pension:    { income:["Пенсия"], expense:["Прочее"] },
   securities: { income:["Дивиденды","Продажа бумаг","Прибыль"], expense:["Покупка бумаг","Комиссия"] },
   deposit:    { income:["Проценты"], expense:["Пополнение вклада"] }
 };
+
+var SUPPLIER_SEED = ["Гүлзира","Анық","Әсел","Витя","Купи мама","Хоргос","Бижутерия","Сөмке"];
+var TICKER_SEED = ["SCHD","VNQ","IAUM","VXUS","XLP","VTI","SMH"];
 
 var MONTH_NAMES = ["Янв","Фев","Мар","Апр","Май","Июн","Июл","Авг","Сен","Окт","Ноя","Дек"];
 var TREND_MONTHS = 6;
@@ -494,11 +534,16 @@ document.querySelectorAll(".tab-btn").forEach(function(btn){
 
 var opDate = document.getElementById("opDate");
 var opSource = document.getElementById("opSource");
+var opSupplier = document.getElementById("opSupplier");
+var opSupplierField = document.getElementById("opSupplierField");
 var opCategory = document.getElementById("opCategory");
 var opAmount = document.getElementById("opAmount");
 var opComment = document.getElementById("opComment");
 var opForm = document.getElementById("opForm");
+var opSubmitBtn = document.getElementById("opSubmitBtn");
+var opCancelEditBtn = document.getElementById("opCancelEditBtn");
 var currentOpType = "expense";
+var editingOpId = null;
 
 opDate.value = todayStr();
 
@@ -511,7 +556,7 @@ document.querySelectorAll("#opForm .seg-btn").forEach(function(btn){
   });
 });
 
-opSource.addEventListener("change", updateCategoryOptions);
+opSource.addEventListener("change", onSourceChange);
 
 function updateCategoryOptions(){
   var dl = document.getElementById("categoryOptions");
@@ -524,21 +569,70 @@ function updateCategoryOptions(){
   });
 }
 
+function updateSupplierFieldVisibility(){
+  opSupplierField.style.display = opSource.value === "shop" ? "" : "none";
+}
+
+function onSourceChange(){
+  updateCategoryOptions();
+  updateSupplierFieldVisibility();
+}
+
+function updateSupplierOptions(){
+  var dl = document.getElementById("supplierOptions");
+  dl.innerHTML = "";
+  var used = state.operations.map(function(o){ return o.supplier; }).filter(Boolean);
+  var seen = {};
+  SUPPLIER_SEED.concat(used).forEach(function(name){
+    var key = name.toLowerCase();
+    if(seen[key]) return;
+    seen[key] = true;
+    var opt = document.createElement("option");
+    opt.value = name;
+    dl.appendChild(opt);
+  });
+}
+
+function updateAssetNameOptions(){
+  var dl = document.getElementById("assetNameOptions");
+  dl.innerHTML = "";
+  var used = state.assets.map(function(a){ return a.name; });
+  var seen = {};
+  TICKER_SEED.concat(used).forEach(function(name){
+    var key = name.toLowerCase();
+    if(seen[key]) return;
+    seen[key] = true;
+    var opt = document.createElement("option");
+    opt.value = name;
+    dl.appendChild(opt);
+  });
+}
+
 /* ---------- sources (dynamic, user-managed) ---------- */
 
-function renderSourceSelect(){
-  var prev = opSource.value;
-  opSource.innerHTML = "";
+function populateSourceSelect(selectEl, includeAllOption){
+  var prev = selectEl.value;
+  selectEl.innerHTML = "";
+  if(includeAllOption){
+    var allOpt = document.createElement("option");
+    allOpt.value = "";
+    allOpt.textContent = "Все источники";
+    selectEl.appendChild(allOpt);
+  }
   state.sources.forEach(function(s){
     var opt = document.createElement("option");
     opt.value = s.key;
     opt.textContent = s.label;
-    opSource.appendChild(opt);
+    selectEl.appendChild(opt);
   });
-  if(state.sources.some(function(s){ return s.key === prev; })){
-    opSource.value = prev;
-  }
-  updateCategoryOptions();
+  var stillValid = Array.prototype.some.call(selectEl.options, function(o){ return o.value === prev; });
+  if(stillValid) selectEl.value = prev;
+}
+
+function renderSourceSelect(){
+  populateSourceSelect(opSource, false);
+  populateSourceSelect(document.getElementById("filterSource"), true);
+  onSourceChange();
 }
 
 function renderSourceList(){
@@ -556,6 +650,29 @@ function renderSourceList(){
     name.textContent = s.label;
     main.appendChild(name);
     row.appendChild(main);
+
+    var edit = document.createElement("button");
+    edit.className = "del-btn";
+    edit.type = "button";
+    edit.textContent = "✎";
+    edit.addEventListener("click", function(){
+      var newName = prompt("Новое название источника:", s.label);
+      if(newName === null) return;
+      newName = newName.trim();
+      if(!newName) return;
+      var clash = state.sources.some(function(x){ return x.key !== s.key && x.label.toLowerCase() === newName.toLowerCase(); });
+      if(clash){
+        alert("Источник с таким названием уже есть.");
+        return;
+      }
+      s.label = newName;
+      saveState();
+      renderSourceList();
+      renderSourceSelect();
+      renderOperations();
+      renderDashboard();
+    });
+    row.appendChild(edit);
 
     if(s.key !== "shop"){
       var del = document.createElement("button");
@@ -596,23 +713,69 @@ document.getElementById("addSourceBtn").addEventListener("click", function(){
   renderSourceSelect();
 });
 
+function clearOpFormInputs(){
+  opAmount.value = "";
+  opComment.value = "";
+  opCategory.value = "";
+  opSupplier.value = "";
+}
+
+function exitEditMode(){
+  editingOpId = null;
+  opSubmitBtn.textContent = "Добавить операцию";
+  opCancelEditBtn.style.display = "none";
+}
+
+opCancelEditBtn.addEventListener("click", function(){
+  clearOpFormInputs();
+  exitEditMode();
+});
+
+function startEditOp(op){
+  editingOpId = op.id;
+  opDate.value = op.date;
+  document.querySelectorAll("#opForm .seg-btn").forEach(function(b){
+    b.classList.toggle("active", b.dataset.type === op.type);
+  });
+  currentOpType = op.type;
+  opSource.value = op.source;
+  onSourceChange();
+  opSupplier.value = op.supplier || "";
+  opCategory.value = op.category;
+  opAmount.value = op.amount;
+  opComment.value = op.comment || "";
+  opSubmitBtn.textContent = "Сохранить изменения";
+  opCancelEditBtn.style.display = "";
+  opForm.scrollIntoView({ behavior:"smooth", block:"start" });
+}
+
 opForm.addEventListener("submit", function(e){
   e.preventDefault();
   var amount = parseFloat(opAmount.value);
   if(!amount || amount <= 0) return;
-  state.operations.push({
-    id: uid(),
+  var record = {
     date: opDate.value || todayStr(),
     type: currentOpType,
     source: opSource.value,
+    supplier: opSource.value === "shop" ? (opSupplier.value || "").trim() : "",
     category: (opCategory.value || "Прочее").trim(),
     amount: amount,
     comment: (opComment.value || "").trim()
-  });
+  };
+  if(editingOpId){
+    var idx = state.operations.findIndex(function(o){ return o.id === editingOpId; });
+    if(idx !== -1){
+      record.id = editingOpId;
+      state.operations[idx] = record;
+    }
+    exitEditMode();
+  } else {
+    record.id = uid();
+    state.operations.push(record);
+  }
   saveState();
-  opAmount.value = "";
-  opComment.value = "";
-  opCategory.value = "";
+  clearOpFormInputs();
+  updateSupplierOptions();
   renderOperations();
   renderDashboard();
 });
@@ -620,13 +783,31 @@ opForm.addEventListener("submit", function(e){
 function renderOperations(){
   var list = document.getElementById("opList");
   var count = document.getElementById("opCount");
-  var ops = state.operations.slice().sort(function(a,b){ return b.date.localeCompare(a.date); });
+
+  var fFrom = document.getElementById("filterFrom").value;
+  var fTo = document.getElementById("filterTo").value;
+  var fType = document.getElementById("filterType").value;
+  var fSource = document.getElementById("filterSource").value;
+  var fSearch = document.getElementById("filterSearch").value.trim().toLowerCase();
+
+  var ops = state.operations.filter(function(o){
+    if(fFrom && o.date < fFrom) return false;
+    if(fTo && o.date > fTo) return false;
+    if(fType && o.type !== fType) return false;
+    if(fSource && o.source !== fSource) return false;
+    if(fSearch){
+      var hay = (o.category + " " + (o.supplier || "") + " " + (o.comment || "")).toLowerCase();
+      if(hay.indexOf(fSearch) === -1) return false;
+    }
+    return true;
+  });
+  ops = ops.slice().sort(function(a,b){ return b.date.localeCompare(a.date); });
   count.textContent = ops.length ? (ops.length + " шт.") : "";
   list.innerHTML = "";
   if(!ops.length){
     var empty = document.createElement("div");
     empty.className = "empty-state";
-    empty.textContent = "Пока нет операций. Добавьте первую выше.";
+    empty.textContent = state.operations.length ? "Ничего не найдено по этим фильтрам." : "Пока нет операций. Добавьте первую выше.";
     list.appendChild(empty);
     return;
   }
@@ -642,7 +823,7 @@ function renderOperations(){
     var meta = document.createElement("div");
     meta.className = "op-meta";
     var src = sourceInfo(op.source);
-    meta.textContent = op.date + " · " + src.label + (op.comment ? " · " + op.comment : "");
+    meta.textContent = op.date + " · " + src.label + (op.supplier ? " · " + op.supplier : "") + (op.comment ? " · " + op.comment : "");
     main.appendChild(cat);
     main.appendChild(meta);
 
@@ -651,6 +832,11 @@ function renderOperations(){
     var amt = document.createElement("div");
     amt.className = "op-amount " + op.type;
     amt.textContent = (op.type === "income" ? "+" : "−") + formatMoney(op.amount);
+    var edit = document.createElement("button");
+    edit.className = "del-btn";
+    edit.type = "button";
+    edit.textContent = "✎";
+    edit.addEventListener("click", function(){ startEditOp(op); });
     var del = document.createElement("button");
     del.className = "del-btn";
     del.type = "button";
@@ -659,11 +845,13 @@ function renderOperations(){
       if(confirm("Удалить операцию «" + op.category + "»?")){
         state.operations = state.operations.filter(function(o){ return o.id !== op.id; });
         saveState();
+        if(editingOpId === op.id) exitEditMode();
         renderOperations();
         renderDashboard();
       }
     });
     right.appendChild(amt);
+    right.appendChild(edit);
     right.appendChild(del);
 
     row.appendChild(main);
@@ -671,6 +859,12 @@ function renderOperations(){
     list.appendChild(row);
   });
 }
+
+["filterFrom","filterTo","filterType","filterSource","filterSearch"].forEach(function(id){
+  var el = document.getElementById(id);
+  el.addEventListener("input", renderOperations);
+  el.addEventListener("change", renderOperations);
+});
 
 /* ---------- assets form ---------- */
 
@@ -692,6 +886,7 @@ assetForm.addEventListener("submit", function(e){
   document.getElementById("assetName").value = "";
   document.getElementById("assetAmount").value = "";
   document.getElementById("assetNote").value = "";
+  updateAssetNameOptions();
   renderAssets();
   renderDashboard();
 });
@@ -884,6 +1079,14 @@ function renderShopSection(range){
     return inc - exp;
   });
   divergingColumnChart(document.getElementById("shopTrendChart"), months, profits);
+
+  var supplierMap = {};
+  shopOps.filter(function(o){ return o.type === "expense" && o.supplier; }).forEach(function(o){
+    supplierMap[o.supplier] = (supplierMap[o.supplier] || 0) + o.amount;
+  });
+  var supplierItems = Object.keys(supplierMap).map(function(k){ return { label:k, value:supplierMap[k], color:"#2a78d6" }; });
+  supplierItems = topNWithOther(supplierItems, 8);
+  hBarChart(document.getElementById("shopSupplierChart"), supplierItems, "Нет расходов с указанным поставщиком за период.");
 }
 
 /* ---------- SVG chart helpers ---------- */
@@ -1133,12 +1336,13 @@ document.getElementById("exportJsonBtn").addEventListener("click", function(){
 
 document.getElementById("exportCsvBtn").addEventListener("click", function(){
   function esc(s){ return '"' + String(s).replace(/"/g,'""') + '"'; }
-  var lines = ["Дата,Тип,Источник,Категория,Сумма,Комментарий"];
+  var lines = ["Дата,Тип,Источник,Поставщик,Категория,Сумма,Комментарий"];
   state.operations.slice().sort(function(a,b){ return a.date.localeCompare(b.date); }).forEach(function(o){
     lines.push([
       o.date,
       o.type === "income" ? "Доход" : "Расход",
       esc(sourceInfo(o.source).label),
+      esc(o.supplier || ""),
       esc(o.category),
       o.amount,
       esc(o.comment || "")
@@ -1158,12 +1362,21 @@ document.getElementById("importFile").addEventListener("change", function(e){
         alert("Файл не похож на резервную копию этого приложения.");
         return;
       }
-      if(confirm("Заменить текущие данные на данные из файла? Это действие нельзя отменить.")){
-        state = {
-          operations: data.operations,
-          assets: data.assets,
-          sources: Array.isArray(data.sources) && data.sources.length ? data.sources : DEFAULT_SOURCES.slice()
-        };
+      var importedSources = Array.isArray(data.sources) && data.sources.length ? data.sources : DEFAULT_SOURCES.slice();
+      var doReplace = confirm("Импорт файла.\n\nOK — заменить текущие данные данными из файла (текущие будут потеряны).\nОтмена — выбрать «добавить к существующим».");
+      if(doReplace){
+        state = { operations: data.operations, assets: data.assets, sources: importedSources };
+        saveState();
+        location.reload();
+        return;
+      }
+      if(confirm("Добавить данные из файла к уже существующим (ничего не удаляя)?")){
+        state.operations = state.operations.concat(data.operations);
+        state.assets = state.assets.concat(data.assets);
+        importedSources.forEach(function(s){
+          var exists = state.sources.some(function(x){ return x.label.toLowerCase() === s.label.toLowerCase(); });
+          if(!exists) state.sources.push(s);
+        });
         saveState();
         location.reload();
       }
@@ -1179,6 +1392,8 @@ document.getElementById("importFile").addEventListener("change", function(e){
 loadState();
 renderSourceSelect();
 renderSourceList();
+updateSupplierOptions();
+updateAssetNameOptions();
 renderOperations();
 renderAssets();
 renderDashboard();
