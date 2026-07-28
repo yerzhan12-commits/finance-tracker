@@ -338,9 +338,22 @@
           <input type="text" id="assetName" list="assetNameOptions" placeholder="Например: Депозит Kaspi или SCHD" required>
           <datalist id="assetNameOptions"></datalist>
         </div>
+        <div class="field-row">
+          <div class="field">
+            <label>Валюта</label>
+            <select id="assetCurrency">
+              <option value="KZT">₸ Тенге</option>
+              <option value="USD">$ Доллары</option>
+            </select>
+          </div>
+          <div class="field" id="assetRateField" style="display:none;">
+            <label>Курс USD/KZT</label>
+            <input type="number" id="assetRate" min="0" step="0.01" inputmode="decimal" placeholder="Например: 530">
+          </div>
+        </div>
         <div class="field">
-          <label>Текущая сумма, ₸</label>
-          <input type="number" id="assetAmount" min="0" step="1" inputmode="numeric" placeholder="0" required>
+          <label id="assetAmountLabel">Текущая сумма, ₸</label>
+          <input type="number" id="assetAmount" min="0" step="0.01" inputmode="decimal" placeholder="0" required>
         </div>
         <div class="field">
           <label>Заметка (необязательно)</label>
@@ -1030,15 +1043,33 @@ function renderOperations(){
 var assetForm = document.getElementById("assetForm");
 var assetType = document.getElementById("assetType");
 var assetName = document.getElementById("assetName");
+var assetCurrency = document.getElementById("assetCurrency");
+var assetRateField = document.getElementById("assetRateField");
+var assetRate = document.getElementById("assetRate");
+var assetAmountLabel = document.getElementById("assetAmountLabel");
 var assetAmount = document.getElementById("assetAmount");
 var assetNote = document.getElementById("assetNote");
 var assetSubmitBtn = document.getElementById("assetSubmitBtn");
 var assetCancelEditBtn = document.getElementById("assetCancelEditBtn");
 var editingAssetId = null;
 
+function assetValueKZT(a){
+  if(a.currency === "USD") return a.amount * (a.rate || 0);
+  return a.amount;
+}
+
+function updateAssetCurrencyFields(){
+  var isUsd = assetCurrency.value === "USD";
+  assetRateField.style.display = isUsd ? "" : "none";
+  assetAmountLabel.textContent = isUsd ? "Текущая сумма, $" : "Текущая сумма, ₸";
+}
+assetCurrency.addEventListener("change", updateAssetCurrencyFields);
+updateAssetCurrencyFields();
+
 function clearAssetFormInputs(){
   assetName.value = "";
   assetAmount.value = "";
+  assetRate.value = "";
   assetNote.value = "";
 }
 
@@ -1057,6 +1088,9 @@ function startEditAsset(a){
   editingAssetId = a.id;
   assetType.value = a.type;
   assetName.value = a.name;
+  assetCurrency.value = a.currency || "KZT";
+  updateAssetCurrencyFields();
+  assetRate.value = a.rate || "";
   assetAmount.value = a.amount;
   assetNote.value = a.note || "";
   assetSubmitBtn.textContent = "Сохранить изменения";
@@ -1068,9 +1102,13 @@ assetForm.addEventListener("submit", function(e){
   e.preventDefault();
   var amount = parseFloat(assetAmount.value);
   if(!amount || amount <= 0) return;
+  var currency = assetCurrency.value;
+  var rate = currency === "USD" ? (parseFloat(assetRate.value) || 0) : 0;
   var record = {
     type: assetType.value,
     name: (assetName.value || "").trim(),
+    currency: currency,
+    rate: rate,
     amount: amount,
     note: (assetNote.value || "").trim(),
     updated: todayStr()
@@ -1096,7 +1134,7 @@ assetForm.addEventListener("submit", function(e){
 function renderAssets(){
   renderAssetGroup("deposit", "depositList", "depositTotal");
   renderAssetGroup("securities", "securitiesList", "securitiesTotal");
-  var total = state.assets.reduce(function(s,a){ return s + a.amount; }, 0);
+  var total = state.assets.reduce(function(s,a){ return s + assetValueKZT(a); }, 0);
   document.getElementById("assetsGrandTotal").textContent = formatMoney(total);
 }
 
@@ -1104,7 +1142,7 @@ function renderAssetGroup(type, listId, totalId){
   var items = state.assets.filter(function(a){ return a.type === type; });
   var list = document.getElementById(listId);
   var totalEl = document.getElementById(totalId);
-  var total = items.reduce(function(s,a){ return s + a.amount; }, 0);
+  var total = items.reduce(function(s,a){ return s + assetValueKZT(a); }, 0);
   totalEl.textContent = items.length ? formatMoney(total) : "";
   list.innerHTML = "";
   if(!items.length){
@@ -1124,7 +1162,9 @@ function renderAssetGroup(type, listId, totalId){
     name.textContent = a.name;
     var meta = document.createElement("div");
     meta.className = "op-meta";
-    meta.textContent = "Обновлено " + a.updated + (a.note ? " · " + a.note : "");
+    var isUsd = a.currency === "USD";
+    var rateNote = isUsd ? ("курс " + a.rate) : "";
+    meta.textContent = "Обновлено " + a.updated + (rateNote ? " · " + rateNote : "") + (a.note ? " · " + a.note : "");
     main.appendChild(name);
     main.appendChild(meta);
 
@@ -1132,7 +1172,20 @@ function renderAssetGroup(type, listId, totalId){
     right.className = "op-right";
     var amt = document.createElement("div");
     amt.className = "op-amount";
-    amt.textContent = formatMoney(a.amount);
+    if(isUsd){
+      amt.innerHTML = "";
+      var line1 = document.createElement("div");
+      line1.textContent = "$" + a.amount.toLocaleString("en-US");
+      var line2 = document.createElement("div");
+      line2.style.fontSize = "11px";
+      line2.style.fontWeight = "400";
+      line2.style.color = "var(--muted)";
+      line2.textContent = "≈ " + formatMoney(assetValueKZT(a));
+      amt.appendChild(line1);
+      amt.appendChild(line2);
+    } else {
+      amt.textContent = formatMoney(a.amount);
+    }
     var edit = document.createElement("button");
     edit.className = "del-btn";
     edit.type = "button";
@@ -1200,7 +1253,7 @@ function renderDashboard(){
   var income = ops.filter(function(o){ return o.type === "income"; }).reduce(function(s,o){ return s+o.amount; },0);
   var expense = ops.filter(function(o){ return o.type === "expense"; }).reduce(function(s,o){ return s+o.amount; },0);
   var net = income - expense;
-  var capital = state.assets.reduce(function(s,a){ return s+a.amount; },0);
+  var capital = state.assets.reduce(function(s,a){ return s+assetValueKZT(a); },0);
 
   var kpiRow = document.getElementById("kpiRow");
   kpiRow.innerHTML = "";
