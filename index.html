@@ -7,21 +7,22 @@
 <link rel="icon" href="data:,">
 <style>
   :root{
-    --page:#f9f9f7;
-    --surface:#fcfcfb;
-    --ink:#0b0b0b;
-    --ink2:#52514e;
+    --page:#0d0d0d;
+    --surface:#1a1a19;
+    --ink:#ffffff;
+    --ink2:#c3c2b7;
     --muted:#898781;
-    --grid:#e1e0d9;
-    --border:rgba(11,11,11,0.10);
-    --good:#006300;
-    --bad:#d03b3b;
-    --blue:#2a78d6;
-    --orange:#eb6834;
-    --aqua:#1baf7a;
-    --yellow:#eda100;
-    --magenta:#e87ba4;
-    --red:#e34948;
+    --grid:#2c2c2a;
+    --baseline:#383835;
+    --border:rgba(255,255,255,0.10);
+    --good:#0ca30c;
+    --bad:#e66767;
+    --blue:#3987e5;
+    --orange:#d95926;
+    --aqua:#199e70;
+    --yellow:#c98500;
+    --magenta:#d55181;
+    --red:#e66767;
   }
   *{box-sizing:border-box;margin:0;padding:0;}
   body{
@@ -133,9 +134,9 @@
   .legend-swatch.dot{width:8px;height:8px;border-radius:50%;}
 
   .chart-tooltip{
-    position:fixed;pointer-events:none;background:var(--ink);color:#fff;
+    position:fixed;pointer-events:none;background:#000000;color:#fff;
     font-size:12px;padding:8px 10px;border-radius:8px;z-index:50;
-    box-shadow:0 4px 12px rgba(0,0,0,0.2);max-width:220px;
+    box-shadow:0 4px 12px rgba(0,0,0,0.5);max-width:220px;
   }
   .chart-tooltip .tt-title{color:#c3c2b7;margin-bottom:4px;}
   .chart-tooltip .tt-row{display:flex;align-items:center;gap:6px;}
@@ -393,6 +394,16 @@ var CATEGORY_SUGGESTIONS = {
 
 var SUPPLIER_SEED = ["Гүлзира","Анық","Әсел","Витя","Купи мама","Хоргос","Бижутерия","Сөмке"];
 var TICKER_SEED = ["SCHD","VNQ","IAUM","VXUS","XLP","VTI","SMH"];
+
+/* chart colors (dark theme) */
+var C_BLUE = "#3987e5";
+var C_RED = "#e66767";
+var C_INK = "#ffffff";
+var C_INK2 = "#c3c2b7";
+var C_MUTED = "#898781";
+var C_GRID = "#2c2c2a";
+var C_BASELINE = "#383835";
+var C_SURFACE = "#1a1a19";
 
 var MONTH_NAMES = ["Янв","Фев","Мар","Апр","Май","Июн","Июл","Авг","Сен","Окт","Ноя","Дек"];
 var TREND_MONTHS = 6;
@@ -1019,8 +1030,8 @@ function renderTrendChart(){
     else expenseVals[idx] += o.amount;
   });
   lineChart(document.getElementById("trendChart"), months, [
-    { name:"Доходы", color:"#2a78d6", values:incomeVals },
-    { name:"Расходы", color:"#e34948", values:expenseVals }
+    { name:"Доходы", color:C_BLUE, values:incomeVals },
+    { name:"Расходы", color:C_RED, values:expenseVals }
   ]);
 }
 
@@ -1029,7 +1040,7 @@ function topNWithOther(items, n){
   if(items.length <= n) return items;
   var head = items.slice(0, n-1);
   var otherSum = items.slice(n-1).reduce(function(s,i){ return s+i.value; }, 0);
-  head.push({ label:"Другое", value:otherSum, color:"#2a78d6" });
+  head.push({ label:"Другое", value:otherSum, color:C_BLUE });
   return head;
 }
 
@@ -1038,7 +1049,7 @@ function renderCategoryChart(ops){
   ops.filter(function(o){ return o.type === "expense"; }).forEach(function(o){
     map[o.category] = (map[o.category] || 0) + o.amount;
   });
-  var items = Object.keys(map).map(function(k){ return { label:k, value:map[k], color:"#2a78d6" }; });
+  var items = Object.keys(map).map(function(k){ return { label:k, value:map[k], color:C_BLUE }; });
   items = topNWithOther(items, 8);
   hBarChart(document.getElementById("categoryChart"), items, "Нет расходов за выбранный период.");
 }
@@ -1047,7 +1058,7 @@ function renderSourceChart(ops, type, containerId){
   var items = state.sources.map(function(s){
     var sum = ops.filter(function(o){ return o.source === s.key && o.type === type; })
                  .reduce(function(a,o){ return a+o.amount; }, 0);
-    return { label:s.label, value:sum, color:"#2a78d6" };
+    return { label:s.label, value:sum, color:C_BLUE };
   }).filter(function(i){ return i.value > 0; });
   items = topNWithOther(items, 8);
   var emptyMsg = type === "income" ? "Нет доходов за выбранный период." : "Нет расходов за выбранный период.";
@@ -1084,7 +1095,7 @@ function renderShopSection(range){
   shopOps.filter(function(o){ return o.type === "expense" && o.supplier; }).forEach(function(o){
     supplierMap[o.supplier] = (supplierMap[o.supplier] || 0) + o.amount;
   });
-  var supplierItems = Object.keys(supplierMap).map(function(k){ return { label:k, value:supplierMap[k], color:"#2a78d6" }; });
+  var supplierItems = Object.keys(supplierMap).map(function(k){ return { label:k, value:supplierMap[k], color:C_BLUE }; });
   supplierItems = topNWithOther(supplierItems, 8);
   hBarChart(document.getElementById("shopSupplierChart"), supplierItems, "Нет расходов с указанным поставщиком за период.");
 }
@@ -1164,17 +1175,17 @@ function hBarChart(container, items, emptyMsg){
     var w = max > 0 ? (item.value/max) * barAreaW : 0;
     w = Math.max(w, item.value > 0 ? 2 : 0);
 
-    var label = svgEl("text", { x:0, y:y+rowH/2+4, "font-size":"11", fill:"#52514e" });
+    var label = svgEl("text", { x:0, y:y+rowH/2+4, "font-size":"11", fill:C_INK2 });
     label.textContent = item.label.length > 14 ? item.label.slice(0,13)+"…" : item.label;
     svg.appendChild(label);
 
-    var track = svgEl("rect", { x:labelW, y:barY, width:barAreaW, height:barH, rx:4, fill:"#e1e0d9", opacity:"0.4" });
+    var track = svgEl("rect", { x:labelW, y:barY, width:barAreaW, height:barH, rx:4, fill:C_GRID, opacity:"1" });
     svg.appendChild(track);
 
     var bar = svgEl("rect", { x:labelW, y:barY, width:w, height:barH, rx:4, fill:item.color, style:"cursor:pointer" });
     svg.appendChild(bar);
 
-    var valLabel = svgEl("text", { x:labelW+barAreaW+8, y:y+rowH/2+4, "font-size":"11", "font-weight":"700", fill:"#0b0b0b" });
+    var valLabel = svgEl("text", { x:labelW+barAreaW+8, y:y+rowH/2+4, "font-size":"11", "font-weight":"700", fill:C_INK });
     valLabel.textContent = formatMoney(item.value);
     svg.appendChild(valLabel);
 
@@ -1210,7 +1221,7 @@ function lineChart(container, months, series){
   for(var g=0; g<=steps; g++){
     var val = maxVal * g/steps;
     var y = yAt(val);
-    svg.appendChild(svgEl("line", { x1:padL, x2:W-padR, y1:y, y2:y, stroke:"#e1e0d9", "stroke-width":"1" }));
+    svg.appendChild(svgEl("line", { x1:padL, x2:W-padR, y1:y, y2:y, stroke:C_GRID, "stroke-width":"1" }));
     var lbl = svgEl("text", { x:padL-6, y:y+3, "font-size":"9", fill:"#898781", "text-anchor":"end" });
     lbl.textContent = val >= 1000 ? Math.round(val/1000) + "к" : Math.round(val);
     svg.appendChild(lbl);
@@ -1227,12 +1238,12 @@ function lineChart(container, months, series){
     var pts = s.values.map(function(v,i){ return xAt(i) + "," + yAt(v); }).join(" ");
     svg.appendChild(svgEl("polyline", { points:pts, fill:"none", stroke:s.color, "stroke-width":"2", "stroke-linejoin":"round", "stroke-linecap":"round" }));
     s.values.forEach(function(v,i){
-      svg.appendChild(svgEl("circle", { cx:xAt(i), cy:yAt(v), r:4, fill:s.color, stroke:"#fcfcfb", "stroke-width":"2" }));
+      svg.appendChild(svgEl("circle", { cx:xAt(i), cy:yAt(v), r:4, fill:s.color, stroke:C_SURFACE, "stroke-width":"2" }));
     });
   });
 
   // hover crosshair
-  var crosshair = svgEl("line", { x1:0, x2:0, y1:padT, y2:padT+chartH, stroke:"#c3c2b7", "stroke-width":"1", visibility:"hidden" });
+  var crosshair = svgEl("line", { x1:0, x2:0, y1:padT, y2:padT+chartH, stroke:C_BASELINE, "stroke-width":"1", visibility:"hidden" });
   svg.appendChild(crosshair);
 
   var overlay = svgEl("rect", { x:padL, y:padT, width:chartW, height:chartH, fill:"transparent" });
@@ -1290,12 +1301,12 @@ function divergingColumnChart(container, months, values){
 
   var svg = svgEl("svg", { viewBox:"0 0 " + W + " " + H, role:"img" });
 
-  svg.appendChild(svgEl("line", { x1:padL, x2:W-padR, y1:midY, y2:midY, stroke:"#c3c2b7", "stroke-width":"1" }));
+  svg.appendChild(svgEl("line", { x1:padL, x2:W-padR, y1:midY, y2:midY, stroke:C_BASELINE, "stroke-width":"1" }));
 
   values.forEach(function(v, i){
     var cx = padL + colW*i + colW/2;
     var h = maxAbs > 0 ? (Math.abs(v)/maxAbs) * (chartH/2) : 0;
-    var color = v >= 0 ? "#2a78d6" : "#e34948";
+    var color = v >= 0 ? C_BLUE : C_RED;
     var y = v >= 0 ? midY - h : midY;
     var rect = svgEl("rect", { x:cx-barW/2, y:y, width:barW, height:Math.max(h,1), rx:4, fill:color, style:"cursor:pointer" });
     svg.appendChild(rect);
