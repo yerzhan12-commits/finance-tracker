@@ -346,7 +346,8 @@
           <label>Заметка (необязательно)</label>
           <input type="text" id="assetNote" placeholder="">
         </div>
-        <button type="submit" class="btn-primary">Сохранить актив</button>
+        <button type="submit" class="btn-primary" id="assetSubmitBtn">Сохранить актив</button>
+        <button type="button" class="btn-secondary" id="assetCancelEditBtn" style="display:none;margin-top:10px;">Отменить редактирование</button>
       </form>
 
       <div class="card">
@@ -1027,23 +1028,66 @@ function renderOperations(){
 /* ---------- assets form ---------- */
 
 var assetForm = document.getElementById("assetForm");
+var assetType = document.getElementById("assetType");
+var assetName = document.getElementById("assetName");
+var assetAmount = document.getElementById("assetAmount");
+var assetNote = document.getElementById("assetNote");
+var assetSubmitBtn = document.getElementById("assetSubmitBtn");
+var assetCancelEditBtn = document.getElementById("assetCancelEditBtn");
+var editingAssetId = null;
+
+function clearAssetFormInputs(){
+  assetName.value = "";
+  assetAmount.value = "";
+  assetNote.value = "";
+}
+
+function exitAssetEditMode(){
+  editingAssetId = null;
+  assetSubmitBtn.textContent = "Сохранить актив";
+  assetCancelEditBtn.style.display = "none";
+}
+
+assetCancelEditBtn.addEventListener("click", function(){
+  clearAssetFormInputs();
+  exitAssetEditMode();
+});
+
+function startEditAsset(a){
+  editingAssetId = a.id;
+  assetType.value = a.type;
+  assetName.value = a.name;
+  assetAmount.value = a.amount;
+  assetNote.value = a.note || "";
+  assetSubmitBtn.textContent = "Сохранить изменения";
+  assetCancelEditBtn.style.display = "";
+  assetForm.scrollIntoView({ behavior:"smooth", block:"start" });
+}
 
 assetForm.addEventListener("submit", function(e){
   e.preventDefault();
-  var amount = parseFloat(document.getElementById("assetAmount").value);
+  var amount = parseFloat(assetAmount.value);
   if(!amount || amount <= 0) return;
-  state.assets.push({
-    id: uid(),
-    type: document.getElementById("assetType").value,
-    name: (document.getElementById("assetName").value || "").trim(),
+  var record = {
+    type: assetType.value,
+    name: (assetName.value || "").trim(),
     amount: amount,
-    note: (document.getElementById("assetNote").value || "").trim(),
+    note: (assetNote.value || "").trim(),
     updated: todayStr()
-  });
+  };
+  if(editingAssetId){
+    var idx = state.assets.findIndex(function(x){ return x.id === editingAssetId; });
+    if(idx !== -1){
+      record.id = editingAssetId;
+      state.assets[idx] = record;
+    }
+    exitAssetEditMode();
+  } else {
+    record.id = uid();
+    state.assets.push(record);
+  }
   saveState();
-  document.getElementById("assetName").value = "";
-  document.getElementById("assetAmount").value = "";
-  document.getElementById("assetNote").value = "";
+  clearAssetFormInputs();
   updateAssetNameOptions();
   renderAssets();
   renderDashboard();
@@ -1089,6 +1133,11 @@ function renderAssetGroup(type, listId, totalId){
     var amt = document.createElement("div");
     amt.className = "op-amount";
     amt.textContent = formatMoney(a.amount);
+    var edit = document.createElement("button");
+    edit.className = "del-btn";
+    edit.type = "button";
+    edit.textContent = "✎";
+    edit.addEventListener("click", function(){ startEditAsset(a); });
     var del = document.createElement("button");
     del.className = "del-btn";
     del.type = "button";
@@ -1097,11 +1146,13 @@ function renderAssetGroup(type, listId, totalId){
       if(confirm("Удалить «" + a.name + "»?")){
         state.assets = state.assets.filter(function(x){ return x.id !== a.id; });
         saveState();
+        if(editingAssetId === a.id) exitAssetEditMode();
         renderAssets();
         renderDashboard();
       }
     });
     right.appendChild(amt);
+    right.appendChild(edit);
     right.appendChild(del);
     row.appendChild(main);
     row.appendChild(right);
