@@ -30,7 +30,7 @@
     background:var(--page);
     color:var(--ink);
   }
-  .app{max-width:480px;margin:0 auto;padding:16px 16px 90px;}
+  .app{max-width:480px;margin:0 auto;padding:16px 16px 106px;}
   header{padding:8px 4px 16px;text-align:center;}
   header h1{font-size:22px;color:var(--blue);}
   header .subtitle{font-size:13px;color:var(--muted);margin-top:4px;}
@@ -44,10 +44,11 @@
     z-index:20;
   }
   .tab-btn{
-    flex:1;background:none;border:none;padding:12px 4px 10px;
-    font-size:12px;color:var(--muted);cursor:pointer;
+    flex:1;background:none;border:none;padding:16px 4px;
+    font-size:15px;font-weight:600;color:var(--muted);cursor:pointer;
+    min-height:56px;
   }
-  .tab-btn.active{color:var(--blue);font-weight:600;}
+  .tab-btn.active{color:var(--blue);}
 
   .tab-panel{display:none;}
   .tab-panel.active{display:block;}
@@ -206,36 +207,53 @@
     <section id="tab-operations" class="tab-panel">
       <form id="opForm" class="card">
         <h2>Добавить операцию</h2>
-        <div class="field-row">
+
+        <div class="segmented" id="opTypeToggle">
+          <button type="button" class="seg-btn active" data-type="expense">Расход</button>
+          <button type="button" class="seg-btn" data-type="income">Доход</button>
+        </div>
+
+        <div class="field" style="margin-top:14px;">
+          <label>Дата</label>
+          <input type="date" id="opDate" required>
+        </div>
+
+        <div id="expenseFields">
           <div class="field">
-            <label>Дата</label>
-            <input type="date" id="opDate" required>
+            <label>Категория</label>
+            <select id="opCategoryExpense"></select>
+          </div>
+          <div class="field" id="opExpenseOtherField" style="display:none;">
+            <label>Источник (свой вариант)</label>
+            <select id="opExpenseOtherSource"></select>
+            <div style="height:8px;"></div>
+            <input type="text" id="opExpenseOtherCategory" placeholder="Своя категория">
+          </div>
+          <div class="field" id="opSupplierField" style="display:none;">
+            <label>Поставщик (необязательно)</label>
+            <input type="text" id="opSupplier" list="supplierOptions" placeholder="Например: Гүлзира">
+            <datalist id="supplierOptions"></datalist>
+          </div>
+        </div>
+
+        <div id="incomeFields" style="display:none;">
+          <div class="field">
+            <label>Источник</label>
+            <select id="opSourceIncome"></select>
           </div>
           <div class="field">
-            <label>Тип</label>
-            <div class="segmented">
-              <button type="button" class="seg-btn active" data-type="expense">Расход</button>
-              <button type="button" class="seg-btn" data-type="income">Доход</button>
-            </div>
+            <label>Категория</label>
+            <select id="opCategoryIncome"></select>
+          </div>
+          <div class="field" id="opIncomeOtherField" style="display:none;">
+            <label>Своя категория</label>
+            <input type="text" id="opIncomeOtherCategory" placeholder="Своя категория">
           </div>
         </div>
-        <div class="field">
-          <label>Источник</label>
-          <select id="opSource"></select>
-        </div>
-        <div class="field" id="opSupplierField" style="display:none;">
-          <label>Поставщик (необязательно)</label>
-          <input type="text" id="opSupplier" list="supplierOptions" placeholder="Например: Гүлзира">
-          <datalist id="supplierOptions"></datalist>
-        </div>
+
         <div class="field">
           <label>Счёт</label>
           <select id="opAccount"></select>
-        </div>
-        <div class="field">
-          <label>Категория</label>
-          <input type="text" id="opCategory" list="categoryOptions" placeholder="Например: Продукты" required>
-          <datalist id="categoryOptions"></datalist>
         </div>
         <div class="field">
           <label>Сумма, ₸</label>
@@ -610,11 +628,9 @@ document.querySelectorAll(".tab-btn").forEach(function(btn){
 /* ---------- operations form ---------- */
 
 var opDate = document.getElementById("opDate");
-var opSource = document.getElementById("opSource");
 var opSupplier = document.getElementById("opSupplier");
 var opSupplierField = document.getElementById("opSupplierField");
 var opAccount = document.getElementById("opAccount");
-var opCategory = document.getElementById("opCategory");
 var opAmount = document.getElementById("opAmount");
 var opComment = document.getElementById("opComment");
 var opForm = document.getElementById("opForm");
@@ -623,38 +639,98 @@ var opCancelEditBtn = document.getElementById("opCancelEditBtn");
 var currentOpType = "expense";
 var editingOpId = null;
 
+var expenseFieldsEl = document.getElementById("expenseFields");
+var incomeFieldsEl = document.getElementById("incomeFields");
+var opCategoryExpense = document.getElementById("opCategoryExpense");
+var opExpenseOtherField = document.getElementById("opExpenseOtherField");
+var opExpenseOtherSource = document.getElementById("opExpenseOtherSource");
+var opExpenseOtherCategory = document.getElementById("opExpenseOtherCategory");
+var opSourceIncome = document.getElementById("opSourceIncome");
+var opCategoryIncome = document.getElementById("opCategoryIncome");
+var opIncomeOtherField = document.getElementById("opIncomeOtherField");
+var opIncomeOtherCategory = document.getElementById("opIncomeOtherCategory");
+
+var EXPENSE_SOURCE_ORDER = ["shop","personal","deposit","securities","pension"];
+
 opDate.value = todayStr();
 
-document.querySelectorAll("#opForm .seg-btn").forEach(function(btn){
-  btn.addEventListener("click", function(){
-    document.querySelectorAll("#opForm .seg-btn").forEach(function(b){ b.classList.remove("active"); });
-    btn.classList.add("active");
-    currentOpType = btn.dataset.type;
-    updateCategoryOptions();
+function setOpTypeUI(type){
+  currentOpType = type;
+  document.querySelectorAll("#opTypeToggle .seg-btn").forEach(function(b){
+    b.classList.toggle("active", b.dataset.type === type);
   });
+  expenseFieldsEl.style.display = type === "expense" ? "" : "none";
+  incomeFieldsEl.style.display = type === "income" ? "" : "none";
+}
+
+document.querySelectorAll("#opTypeToggle .seg-btn").forEach(function(btn){
+  btn.addEventListener("click", function(){ setOpTypeUI(btn.dataset.type); });
 });
 
-opSource.addEventListener("change", onSourceChange);
+function populateExpenseCategorySelect(){
+  var prev = opCategoryExpense.value;
+  opCategoryExpense.innerHTML = "";
+  EXPENSE_SOURCE_ORDER.forEach(function(key){
+    var list = (CATEGORY_SUGGESTIONS[key] || {}).expense || [];
+    var label = sourceInfo(key).label;
+    list.forEach(function(c){
+      var opt = document.createElement("option");
+      opt.value = key + "::" + c;
+      opt.textContent = c === "Прочее" ? "Прочее (" + label + ")" : c;
+      opCategoryExpense.appendChild(opt);
+    });
+  });
+  var otherOpt = document.createElement("option");
+  otherOpt.value = "other";
+  otherOpt.textContent = "Другое / другой источник";
+  opCategoryExpense.appendChild(otherOpt);
+  var stillValid = Array.prototype.some.call(opCategoryExpense.options, function(o){ return o.value === prev; });
+  if(stillValid) opCategoryExpense.value = prev;
+}
 
-function updateCategoryOptions(){
-  var dl = document.getElementById("categoryOptions");
-  dl.innerHTML = "";
-  var list = (CATEGORY_SUGGESTIONS[opSource.value] || {})[currentOpType] || [];
+function updateExpenseOtherVisibility(){
+  opExpenseOtherField.style.display = opCategoryExpense.value === "other" ? "" : "none";
+}
+
+function resolveExpenseSource(){
+  if(opCategoryExpense.value === "other") return opExpenseOtherSource.value;
+  return opCategoryExpense.value.split("::")[0];
+}
+
+function updateSupplierFieldVisibilityForExpense(){
+  opSupplierField.style.display = resolveExpenseSource() === "shop" ? "" : "none";
+}
+
+opCategoryExpense.addEventListener("change", function(){
+  updateExpenseOtherVisibility();
+  updateSupplierFieldVisibilityForExpense();
+});
+opExpenseOtherSource.addEventListener("change", updateSupplierFieldVisibilityForExpense);
+
+function populateIncomeCategorySelect(){
+  opCategoryIncome.innerHTML = "";
+  var list = (CATEGORY_SUGGESTIONS[opSourceIncome.value] || {}).income || [];
   list.forEach(function(c){
     var opt = document.createElement("option");
     opt.value = c;
-    dl.appendChild(opt);
+    opt.textContent = c;
+    opCategoryIncome.appendChild(opt);
   });
+  var otherOpt = document.createElement("option");
+  otherOpt.value = "other";
+  otherOpt.textContent = "Другое";
+  opCategoryIncome.appendChild(otherOpt);
 }
 
-function updateSupplierFieldVisibility(){
-  opSupplierField.style.display = opSource.value === "shop" ? "" : "none";
+function updateIncomeOtherVisibility(){
+  opIncomeOtherField.style.display = opCategoryIncome.value === "other" ? "" : "none";
 }
 
-function onSourceChange(){
-  updateCategoryOptions();
-  updateSupplierFieldVisibility();
-}
+opSourceIncome.addEventListener("change", function(){
+  populateIncomeCategorySelect();
+  updateIncomeOtherVisibility();
+});
+opCategoryIncome.addEventListener("change", updateIncomeOtherVisibility);
 
 function updateSupplierOptions(){
   var dl = document.getElementById("supplierOptions");
@@ -716,9 +792,14 @@ function populateAccountSelect(selectEl, includeAllOption){
 }
 
 function renderSourceSelect(){
-  populateSourceSelect(opSource, false);
+  populateSourceSelect(opSourceIncome, false);
+  populateSourceSelect(opExpenseOtherSource, false);
   populateSourceSelect(document.getElementById("filterSource"), true);
-  onSourceChange();
+  populateExpenseCategorySelect();
+  populateIncomeCategorySelect();
+  updateExpenseOtherVisibility();
+  updateSupplierFieldVisibilityForExpense();
+  updateIncomeOtherVisibility();
 }
 
 function renderAccountSelect(){
@@ -883,8 +964,9 @@ document.getElementById("addAccountBtn").addEventListener("click", function(){
 function clearOpFormInputs(){
   opAmount.value = "";
   opComment.value = "";
-  opCategory.value = "";
   opSupplier.value = "";
+  opExpenseOtherCategory.value = "";
+  opIncomeOtherCategory.value = "";
 }
 
 function exitEditMode(){
@@ -901,15 +983,35 @@ opCancelEditBtn.addEventListener("click", function(){
 function startEditOp(op){
   editingOpId = op.id;
   opDate.value = op.date;
-  document.querySelectorAll("#opForm .seg-btn").forEach(function(b){
-    b.classList.toggle("active", b.dataset.type === op.type);
-  });
-  currentOpType = op.type;
-  opSource.value = op.source;
-  onSourceChange();
-  opSupplier.value = op.supplier || "";
+  setOpTypeUI(op.type);
+
+  if(op.type === "expense"){
+    var matchValue = op.source + "::" + op.category;
+    var found = Array.prototype.some.call(opCategoryExpense.options, function(o){ return o.value === matchValue; });
+    if(found){
+      opCategoryExpense.value = matchValue;
+    } else {
+      opCategoryExpense.value = "other";
+      opExpenseOtherSource.value = op.source;
+      opExpenseOtherCategory.value = op.category;
+    }
+    updateExpenseOtherVisibility();
+    opSupplier.value = op.supplier || "";
+    updateSupplierFieldVisibilityForExpense();
+  } else {
+    opSourceIncome.value = op.source;
+    populateIncomeCategorySelect();
+    var foundInc = Array.prototype.some.call(opCategoryIncome.options, function(o){ return o.value === op.category; });
+    if(foundInc){
+      opCategoryIncome.value = op.category;
+    } else {
+      opCategoryIncome.value = "other";
+      opIncomeOtherCategory.value = op.category;
+    }
+    updateIncomeOtherVisibility();
+  }
+
   opAccount.value = op.account || "";
-  opCategory.value = op.category;
   opAmount.value = op.amount;
   opComment.value = op.comment || "";
   opSubmitBtn.textContent = "Сохранить изменения";
@@ -921,13 +1023,24 @@ opForm.addEventListener("submit", function(e){
   e.preventDefault();
   var amount = parseFloat(opAmount.value);
   if(!amount || amount <= 0) return;
+
+  var source, category, supplier = "";
+  if(currentOpType === "expense"){
+    source = resolveExpenseSource();
+    category = opCategoryExpense.value === "other" ? (opExpenseOtherCategory.value || "Прочее").trim() : opCategoryExpense.value.split("::")[1];
+    supplier = source === "shop" ? (opSupplier.value || "").trim() : "";
+  } else {
+    source = opSourceIncome.value;
+    category = opCategoryIncome.value === "other" ? (opIncomeOtherCategory.value || "Прочее").trim() : opCategoryIncome.value;
+  }
+
   var record = {
     date: opDate.value || todayStr(),
     type: currentOpType,
-    source: opSource.value,
-    supplier: opSource.value === "shop" ? (opSupplier.value || "").trim() : "",
+    source: source,
+    supplier: supplier,
     account: opAccount.value,
-    category: (opCategory.value || "Прочее").trim(),
+    category: category,
     amount: amount,
     comment: (opComment.value || "").trim()
   };
