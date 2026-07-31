@@ -542,6 +542,30 @@ function todayStr(){
   return d.getFullYear() + "-" + m + "-" + day;
 }
 
+var audioCtx = null;
+function playCashSound(){
+  try{
+    if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if(audioCtx.state === "suspended") audioCtx.resume();
+    var now = audioCtx.currentTime;
+    var notes = [880, 1318.51, 1760]; // короткое звонкое арпеджио, похоже на звон монет
+    notes.forEach(function(freq, i){
+      var osc = audioCtx.createOscillator();
+      var gain = audioCtx.createGain();
+      osc.type = "triangle";
+      osc.frequency.value = freq;
+      var start = now + i * 0.07;
+      gain.gain.setValueAtTime(0, start);
+      gain.gain.linearRampToValueAtTime(0.25, start + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.001, start + 0.3);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(start);
+      osc.stop(start + 0.32);
+    });
+  }catch(e){}
+}
+
 function sourceInfo(key){
   for(var i=0;i<state.sources.length;i++){ if(state.sources[i].key === key) return state.sources[i]; }
   return { key:key, label:key };
@@ -1060,6 +1084,7 @@ opForm.addEventListener("submit", function(e){
   updateSupplierOptions();
   renderOperations();
   renderDashboard();
+  playCashSound();
 });
 
 function renderOperations(){
