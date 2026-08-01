@@ -366,6 +366,17 @@
         </div>
         <div id="opList"></div>
       </div>
+
+      <div class="card">
+        <div class="list-header">
+          <h2>Категории за период</h2>
+          <span class="muted" id="catSummaryPeriodLabel"></span>
+        </div>
+        <div class="muted" style="margin-bottom:4px;">Доходы</div>
+        <div id="incomeCategorySummary"></div>
+        <div class="muted" style="margin:14px 0 4px;">Расходы</div>
+        <div id="expenseCategorySummary"></div>
+      </div>
     </section>
 
     <section id="tab-assets" class="tab-panel">
@@ -1280,6 +1291,7 @@ function renderOperations(){
     empty.className = "empty-state";
     empty.textContent = state.operations.length ? "Ничего не найдено по этим фильтрам." : "Пока нет операций. Добавьте первую выше.";
     list.appendChild(empty);
+    renderCategorySummary();
     return;
   }
   ops.forEach(function(op){
@@ -1329,6 +1341,151 @@ function renderOperations(){
     row.appendChild(main);
     row.appendChild(right);
     list.appendChild(row);
+  });
+  renderCategorySummary();
+}
+
+function formatDateRu(iso){
+  var p = iso.split("-");
+  return p[2] + "." + p[1] + "." + p[0];
+}
+
+function resolveSummaryRange(){
+  var from = document.getElementById("filterFrom").value;
+  var to = document.getElementById("filterTo").value;
+  if(!from && !to){
+    var t = todayStr();
+    return { from:t, to:t, label:"сегодня, " + formatDateRu(t) };
+  }
+  var f = from || to;
+  var tt = to || from;
+  var label = f === tt ? formatDateRu(f) : (formatDateRu(f) + " — " + formatDateRu(tt));
+  return { from:f, to:tt, label:label };
+}
+
+function renderCategorySummary(){
+  var range = resolveSummaryRange();
+  document.getElementById("catSummaryPeriodLabel").textContent = range.label;
+  renderCategorySummaryGroup("income", range, "incomeCategorySummary");
+  renderCategorySummaryGroup("expense", range, "expenseCategorySummary");
+}
+
+function renderCategorySummaryGroup(type, range, containerId){
+  var ops = state.operations.filter(function(o){
+    return o.type === type && o.date >= range.from && o.date <= range.to;
+  });
+  var map = {};
+  ops.forEach(function(o){
+    map[o.category] = (map[o.category] || 0) + o.amount;
+  });
+  var container = document.getElementById(containerId);
+  container.innerHTML = "";
+  var cats = Object.keys(map).sort(function(a,b){ return map[b] - map[a]; });
+  if(!cats.length){
+    var empty = document.createElement("div");
+    empty.className = "empty-state";
+    empty.textContent = "Нет операций за этот период.";
+    container.appendChild(empty);
+    return;
+  }
+  cats.forEach(function(cat){
+    var wrap = document.createElement("div");
+    var row = document.createElement("div");
+    row.className = "op-row";
+    row.style.cursor = "pointer";
+    var main = document.createElement("div");
+    main.className = "op-main";
+    var name = document.createElement("div");
+    name.className = "op-cat";
+    name.textContent = cat;
+    main.appendChild(name);
+    var amt = document.createElement("div");
+    amt.className = "op-amount " + type;
+    amt.textContent = (type === "income" ? "+" : "−") + formatMoney(map[cat]);
+    row.appendChild(main);
+    row.appendChild(amt);
+
+    var detail = document.createElement("div");
+    detail.style.display = "none";
+    detail.style.padding = "0 0 8px 4px";
+
+    row.addEventListener("click", function(){
+      var show = detail.style.display === "none";
+      detail.style.display = show ? "" : "none";
+      if(show){
+        buildCategoryDayDetail(detail, type, cat, range);
+      }
+    });
+
+    wrap.appendChild(row);
+    wrap.appendChild(detail);
+    container.appendChild(wrap);
+  });
+}
+
+function buildCategoryDayDetail(container, type, cat, range){
+  container.innerHTML = "";
+  var ops = state.operations.filter(function(o){
+    return o.type === type && o.category === cat && o.date >= range.from && o.date <= range.to;
+  });
+  var byDay = {};
+  ops.forEach(function(o){
+    (byDay[o.date] = byDay[o.date] || []).push(o);
+  });
+  var days = Object.keys(byDay).sort().reverse();
+  days.forEach(function(day){
+    var dayTotal = byDay[day].reduce(function(s,o){ return s + o.amount; }, 0);
+    var dayHeader = document.createElement("div");
+    dayHeader.style.fontSize = "12px";
+    dayHeader.style.color = "var(--muted)";
+    dayHeader.style.margin = "6px 0 2px";
+    dayHeader.textContent = formatDateRu(day) + " · " + formatMoney(dayTotal);
+    container.appendChild(dayHeader);
+
+    byDay[day].forEach(function(op){
+      var r = document.createElement("div");
+      r.className = "op-row";
+      var m = document.createElement("div");
+      m.className = "op-main";
+      var c = document.createElement("div");
+      c.className = "op-cat";
+      c.style.fontSize = "13px";
+      var src = sourceInfo(op.source);
+      var acc = op.account ? accountInfo(op.account) : null;
+      c.textContent = (op.supplier ? op.supplier + " · " : "") + src.label + (acc ? " · " + acc.label : "") + (op.comment ? " · " + op.comment : "");
+      m.appendChild(c);
+
+      var right = document.createElement("div");
+      right.className = "op-right";
+      var a = document.createElement("div");
+      a.className = "op-amount " + op.type;
+      a.textContent = (op.type === "income" ? "+" : "−") + formatMoney(op.amount);
+      var edit = document.createElement("button");
+      edit.className = "del-btn";
+      edit.type = "button";
+      edit.textContent = "✎";
+      edit.addEventListener("click", function(e){ e.stopPropagation(); startEditOp(op); });
+      var del = document.createElement("button");
+      del.className = "del-btn";
+      del.type = "button";
+      del.textContent = "×";
+      del.addEventListener("click", function(e){
+        e.stopPropagation();
+        if(confirm("Удалить операцию «" + op.category + "»?")){
+          state.operations = state.operations.filter(function(o){ return o.id !== op.id; });
+          saveState();
+          if(editingOpId === op.id) exitEditMode();
+          renderOperations();
+          renderDashboard();
+        }
+      });
+      right.appendChild(a);
+      right.appendChild(edit);
+      right.appendChild(del);
+      r.appendChild(m);
+      r.appendChild(right);
+      container.appendChild(r);
+    });
   });
 }
 
