@@ -284,6 +284,33 @@
 
       <div class="card">
         <div class="list-header">
+          <h2>Категории</h2>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label>Источник</label>
+            <select id="catManageSource"></select>
+          </div>
+          <div class="field">
+            <label>Тип</label>
+            <select id="catManageType">
+              <option value="expense">Расход</option>
+              <option value="income">Доход</option>
+            </select>
+          </div>
+        </div>
+        <div id="categoryList"></div>
+        <div class="field" style="margin-top:12px;margin-bottom:0;">
+          <label>Новая категория</label>
+          <div style="display:flex;gap:8px;">
+            <input type="text" id="newCategoryName" placeholder="Например: Спортзал">
+            <button type="button" id="addCategoryBtn" class="btn-secondary" style="width:auto;white-space:nowrap;margin-bottom:0;padding:11px 16px;">Добавить</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="list-header">
           <h2>Счета</h2>
           <span class="muted" id="accountCount"></span>
         </div>
@@ -492,7 +519,11 @@ var PERIOD_PRESETS = [
   { key:"all",       label:"Всё время" }
 ];
 
-var state = { operations:[], assets:[], sources:DEFAULT_SOURCES.slice(), accounts:DEFAULT_ACCOUNTS.slice() };
+function defaultCategories(){
+  return JSON.parse(JSON.stringify(CATEGORY_SUGGESTIONS));
+}
+
+var state = { operations:[], assets:[], sources:DEFAULT_SOURCES.slice(), accounts:DEFAULT_ACCOUNTS.slice(), categories:defaultCategories() };
 var currentPeriod = "month";
 
 /* ---------- storage ---------- */
@@ -510,6 +541,12 @@ function loadState(){
         if(!Array.isArray(state.accounts) || !state.accounts.length){
           state.accounts = DEFAULT_ACCOUNTS.slice();
         }
+        if(!state.categories || typeof state.categories !== "object"){
+          state.categories = defaultCategories();
+        }
+        state.sources.forEach(function(s){
+          if(!state.categories[s.key]) state.categories[s.key] = { income:[], expense:[] };
+        });
       }
     }
   }catch(e){}
@@ -676,6 +713,13 @@ var opIncomeOtherCategory = document.getElementById("opIncomeOtherCategory");
 
 var EXPENSE_SOURCE_ORDER = ["shop","personal","deposit","securities","pension"];
 
+function expenseSourceOrder(){
+  var keys = state.sources.map(function(s){ return s.key; });
+  var ordered = EXPENSE_SOURCE_ORDER.filter(function(k){ return keys.indexOf(k) !== -1; });
+  keys.forEach(function(k){ if(ordered.indexOf(k) === -1) ordered.push(k); });
+  return ordered;
+}
+
 opDate.value = todayStr();
 
 function setOpTypeUI(type){
@@ -694,8 +738,8 @@ document.querySelectorAll("#opTypeToggle .seg-btn").forEach(function(btn){
 function populateExpenseCategorySelect(){
   var prev = opCategoryExpense.value;
   opCategoryExpense.innerHTML = "";
-  EXPENSE_SOURCE_ORDER.forEach(function(key){
-    var list = (CATEGORY_SUGGESTIONS[key] || {}).expense || [];
+  expenseSourceOrder().forEach(function(key){
+    var list = (state.categories[key] || {}).expense || [];
     var label = sourceInfo(key).label;
     list.forEach(function(c){
       var opt = document.createElement("option");
@@ -733,7 +777,7 @@ opExpenseOtherSource.addEventListener("change", updateSupplierFieldVisibilityFor
 
 function populateIncomeCategorySelect(){
   opCategoryIncome.innerHTML = "";
-  var list = (CATEGORY_SUGGESTIONS[opSourceIncome.value] || {}).income || [];
+  var list = (state.categories[opSourceIncome.value] || {}).income || [];
   list.forEach(function(c){
     var opt = document.createElement("option");
     opt.value = c;
@@ -819,11 +863,13 @@ function renderSourceSelect(){
   populateSourceSelect(opSourceIncome, false);
   populateSourceSelect(opExpenseOtherSource, false);
   populateSourceSelect(document.getElementById("filterSource"), true);
+  populateSourceSelect(document.getElementById("catManageSource"), false);
   populateExpenseCategorySelect();
   populateIncomeCategorySelect();
   updateExpenseOtherVisibility();
   updateSupplierFieldVisibilityForExpense();
   updateIncomeOtherVisibility();
+  renderCategoryList();
 }
 
 function renderAccountSelect(){
@@ -883,6 +929,7 @@ function renderSourceList(){
         }
         if(confirm("Удалить источник «" + s.label + "»?")){
           state.sources = state.sources.filter(function(x){ return x.key !== s.key; });
+          delete state.categories[s.key];
           saveState();
           renderSourceList();
           renderSourceSelect();
@@ -902,10 +949,112 @@ document.getElementById("addSourceBtn").addEventListener("click", function(){
     alert("Источник с таким названием уже есть.");
     return;
   }
-  state.sources.push({ key: uid(), label: name });
+  var newKey = uid();
+  state.sources.push({ key: newKey, label: name });
+  state.categories[newKey] = { income:[], expense:[] };
   saveState();
   input.value = "";
   renderSourceList();
+  renderSourceSelect();
+});
+
+/* ---------- categories (dynamic, user-managed) ---------- */
+
+function renderCategoryList(){
+  var srcSelect = document.getElementById("catManageSource");
+  var typeSelect = document.getElementById("catManageType");
+  var srcKey = srcSelect.value;
+  var type = typeSelect.value;
+  if(!srcKey) return;
+  if(!state.categories[srcKey]) state.categories[srcKey] = { income:[], expense:[] };
+  var list = state.categories[srcKey][type] || (state.categories[srcKey][type] = []);
+  var listEl = document.getElementById("categoryList");
+  listEl.innerHTML = "";
+  if(!list.length){
+    var empty = document.createElement("div");
+    empty.className = "empty-state";
+    empty.textContent = "Пока нет категорий.";
+    listEl.appendChild(empty);
+    return;
+  }
+  list.forEach(function(cat){
+    var row = document.createElement("div");
+    row.className = "op-row";
+    var main = document.createElement("div");
+    main.className = "op-main";
+    var name = document.createElement("div");
+    name.className = "op-cat";
+    name.textContent = cat;
+    main.appendChild(name);
+    row.appendChild(main);
+
+    var edit = document.createElement("button");
+    edit.className = "del-btn";
+    edit.type = "button";
+    edit.textContent = "✎";
+    edit.addEventListener("click", function(){
+      var newName = prompt("Новое название категории:", cat);
+      if(newName === null) return;
+      newName = newName.trim();
+      if(!newName) return;
+      var clash = list.some(function(c){ return c !== cat && c.toLowerCase() === newName.toLowerCase(); });
+      if(clash){
+        alert("Такая категория уже есть.");
+        return;
+      }
+      var idx = list.indexOf(cat);
+      list[idx] = newName;
+      state.operations.forEach(function(o){
+        if(o.source === srcKey && o.type === type && o.category === cat) o.category = newName;
+      });
+      saveState();
+      renderSourceSelect();
+      renderOperations();
+      renderDashboard();
+    });
+    row.appendChild(edit);
+
+    var del = document.createElement("button");
+    del.className = "del-btn";
+    del.type = "button";
+    del.textContent = "×";
+    del.addEventListener("click", function(){
+      var used = state.operations.some(function(o){ return o.source === srcKey && o.type === type && o.category === cat; });
+      if(used){
+        alert("Нельзя удалить «" + cat + "» — категория используется в операциях. Сначала удалите или измените их во вкладке «Операции».");
+        return;
+      }
+      if(confirm("Удалить категорию «" + cat + "»?")){
+        state.categories[srcKey][type] = list.filter(function(c){ return c !== cat; });
+        saveState();
+        renderCategoryList();
+      }
+    });
+    row.appendChild(del);
+    listEl.appendChild(row);
+  });
+}
+
+document.getElementById("catManageSource").addEventListener("change", renderCategoryList);
+document.getElementById("catManageType").addEventListener("change", renderCategoryList);
+
+document.getElementById("addCategoryBtn").addEventListener("click", function(){
+  var srcKey = document.getElementById("catManageSource").value;
+  var type = document.getElementById("catManageType").value;
+  var input = document.getElementById("newCategoryName");
+  var name = (input.value || "").trim();
+  if(!name || !srcKey) return;
+  if(!state.categories[srcKey]) state.categories[srcKey] = { income:[], expense:[] };
+  if(!state.categories[srcKey][type]) state.categories[srcKey][type] = [];
+  var exists = state.categories[srcKey][type].some(function(c){ return c.toLowerCase() === name.toLowerCase(); });
+  if(exists){
+    alert("Такая категория уже есть.");
+    return;
+  }
+  state.categories[srcKey][type].push(name);
+  saveState();
+  input.value = "";
+  renderCategoryList();
   renderSourceSelect();
 });
 
@@ -1743,7 +1892,7 @@ function downloadFile(filename, content, mime){
 }
 
 document.getElementById("exportJsonBtn").addEventListener("click", function(){
-  var payload = { operations:state.operations, assets:state.assets, sources:state.sources, accounts:state.accounts, exportedAt:new Date().toISOString() };
+  var payload = { operations:state.operations, assets:state.assets, sources:state.sources, accounts:state.accounts, categories:state.categories, exportedAt:new Date().toISOString() };
   downloadFile("finance-backup-" + todayStr() + ".json", JSON.stringify(payload, null, 2), "application/json");
 });
 
@@ -1778,9 +1927,10 @@ document.getElementById("importFile").addEventListener("change", function(e){
       }
       var importedSources = Array.isArray(data.sources) && data.sources.length ? data.sources : DEFAULT_SOURCES.slice();
       var importedAccounts = Array.isArray(data.accounts) && data.accounts.length ? data.accounts : DEFAULT_ACCOUNTS.slice();
+      var importedCategories = (data.categories && typeof data.categories === "object") ? data.categories : defaultCategories();
       var doReplace = confirm("Импорт файла.\n\nOK — заменить текущие данные данными из файла (текущие будут потеряны).\nОтмена — выбрать «добавить к существующим».");
       if(doReplace){
-        state = { operations: data.operations, assets: data.assets, sources: importedSources, accounts: importedAccounts };
+        state = { operations: data.operations, assets: data.assets, sources: importedSources, accounts: importedAccounts, categories: importedCategories };
         saveState();
         location.reload();
         return;
@@ -1795,6 +1945,17 @@ document.getElementById("importFile").addEventListener("change", function(e){
         importedAccounts.forEach(function(a){
           var exists = state.accounts.some(function(x){ return x.label.toLowerCase() === a.label.toLowerCase(); });
           if(!exists) state.accounts.push(a);
+        });
+        Object.keys(importedCategories).forEach(function(srcKey){
+          if(!state.categories[srcKey]) state.categories[srcKey] = { income:[], expense:[] };
+          ["income","expense"].forEach(function(type){
+            var incoming = importedCategories[srcKey][type] || [];
+            if(!state.categories[srcKey][type]) state.categories[srcKey][type] = [];
+            var existing = state.categories[srcKey][type];
+            incoming.forEach(function(c){
+              if(!existing.some(function(x){ return x.toLowerCase() === c.toLowerCase(); })) existing.push(c);
+            });
+          });
         });
         saveState();
         location.reload();
