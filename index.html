@@ -603,6 +603,19 @@ function playCashSound(){
   }catch(e){}
 }
 
+function playIncomeSound(){
+  playCashSound();
+  try{
+    if(!("speechSynthesis" in window)) return;
+    speechSynthesis.cancel();
+    var u = new SpeechSynthesisUtterance("Машаллах");
+    u.lang = "ru-RU";
+    u.rate = 0.95;
+    u.pitch = 1.05;
+    setTimeout(function(){ speechSynthesis.speak(u); }, 150);
+  }catch(e){}
+}
+
 function sourceInfo(key){
   for(var i=0;i<state.sources.length;i++){ if(state.sources[i].key === key) return state.sources[i]; }
   return { key:key, label:key };
@@ -1233,7 +1246,7 @@ opForm.addEventListener("submit", function(e){
   updateSupplierOptions();
   renderOperations();
   renderDashboard();
-  playCashSound();
+  if(record.type === "income") playIncomeSound(); else playCashSound();
 });
 
 function renderOperations(){
