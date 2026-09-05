@@ -379,6 +379,29 @@
       </div>
     </section>
 
+    <section id="tab-reports" class="tab-panel">
+      <div class="period-row" id="reportsPeriodRow"></div>
+
+      <div class="card">
+        <h2>ОПиУ — отчёт о прибылях и убытках</h2>
+        <div class="field" style="margin-bottom:12px;">
+          <label>Источник</label>
+          <select id="reportsSourceFilter"></select>
+        </div>
+        <div class="kpi-row" id="plKpiRow"></div>
+        <div class="muted" style="margin:12px 0 4px;">Доходы по категориям</div>
+        <div id="plIncomeTable"></div>
+        <div class="muted" style="margin:14px 0 4px;">Расходы по категориям</div>
+        <div id="plExpenseTable"></div>
+      </div>
+
+      <div class="card">
+        <h2>ДДС — движение денег по счетам</h2>
+        <div id="cashFlowTable"></div>
+        <p class="muted" style="margin-top:10px;">Остаток на начало — сумма всех операций по счёту до начала периода. Реальный баланс на карте может отличаться, если не все операции внесены в приложение.</p>
+      </div>
+    </section>
+
     <section id="tab-assets" class="tab-panel">
       <form id="assetForm" class="card">
         <h2>Добавить / обновить актив</h2>
@@ -467,6 +490,7 @@
   <nav class="tabs">
     <button class="tab-btn active" data-tab="dashboard">Обзор</button>
     <button class="tab-btn" data-tab="operations">Операции</button>
+    <button class="tab-btn" data-tab="reports">Отчёты</button>
     <button class="tab-btn" data-tab="assets">Активы</button>
     <button class="tab-btn" data-tab="data">Данные</button>
   </nav>
@@ -1726,6 +1750,173 @@ function renderDashboard(){
   renderAccountChart(ops, "income", "incomeAccountChart");
   renderAccountChart(ops, "expense", "expenseAccountChart");
   renderShopSection(range);
+  renderReports();
+}
+
+/* ---------- reports: ОПиУ / ДДС ---------- */
+
+var reportsPeriod = "month";
+
+function renderReportsPeriodRow(){
+  var row = document.getElementById("reportsPeriodRow");
+  row.innerHTML = "";
+  PERIOD_PRESETS.forEach(function(p){
+    var btn = document.createElement("button");
+    btn.className = "period-btn" + (p.key === reportsPeriod ? " active" : "");
+    btn.textContent = p.label;
+    btn.addEventListener("click", function(){
+      reportsPeriod = p.key;
+      renderReports();
+    });
+    row.appendChild(btn);
+  });
+}
+
+function populateReportsSourceFilter(){
+  var sel = document.getElementById("reportsSourceFilter");
+  var prev = sel.value;
+  sel.innerHTML = "";
+  var allOpt = document.createElement("option");
+  allOpt.value = "";
+  allOpt.textContent = "Все источники";
+  sel.appendChild(allOpt);
+  state.sources.forEach(function(s){
+    var o = document.createElement("option");
+    o.value = s.key;
+    o.textContent = s.label;
+    sel.appendChild(o);
+  });
+  if(Array.prototype.some.call(sel.options, function(o){ return o.value === prev; })) sel.value = prev;
+}
+
+function renderPLTable(containerId, ops, type){
+  var container = document.getElementById(containerId);
+  container.innerHTML = "";
+  var map = {};
+  ops.filter(function(o){ return o.type === type; }).forEach(function(o){
+    map[o.category] = (map[o.category] || 0) + o.amount;
+  });
+  var cats = Object.keys(map).sort(function(a,b){ return map[b] - map[a]; });
+  if(!cats.length){
+    var empty = document.createElement("div");
+    empty.className = "empty-state";
+    empty.textContent = "Нет данных за период.";
+    container.appendChild(empty);
+    return;
+  }
+  cats.forEach(function(cat){
+    var row = document.createElement("div");
+    row.className = "op-row";
+    var main = document.createElement("div");
+    main.className = "op-main";
+    var name = document.createElement("div");
+    name.className = "op-cat";
+    name.textContent = cat;
+    main.appendChild(name);
+    var amt = document.createElement("div");
+    amt.className = "op-amount " + type;
+    amt.textContent = (type === "income" ? "+" : "−") + formatMoney(map[cat]);
+    row.appendChild(main);
+    row.appendChild(amt);
+    container.appendChild(row);
+  });
+}
+
+function renderReports(){
+  renderReportsPeriodRow();
+  populateReportsSourceFilter();
+
+  var range = periodRange(reportsPeriod);
+  var srcFilter = document.getElementById("reportsSourceFilter").value;
+  var ops = state.operations.filter(function(o){
+    return inRange(o.date, range) && (!srcFilter || o.source === srcFilter);
+  });
+
+  var income = ops.filter(function(o){ return o.type === "income"; }).reduce(function(s,o){ return s+o.amount; },0);
+  var expense = ops.filter(function(o){ return o.type === "expense"; }).reduce(function(s,o){ return s+o.amount; },0);
+  var net = income - expense;
+
+  var kpiRow = document.getElementById("plKpiRow");
+  kpiRow.innerHTML = "";
+  kpiRow.appendChild(statTile("Доходы", formatMoney(income)));
+  kpiRow.appendChild(statTile("Расходы", formatMoney(expense)));
+  kpiRow.appendChild(statTile("Прибыль", formatSigned(net), net >= 0 ? "good" : "bad"));
+  var marginLabel = income > 0 ? Math.round(net/income*100) + "%" : "—";
+  kpiRow.appendChild(statTile("Рентабельность", marginLabel, net >= 0 ? "good" : "bad"));
+
+  renderPLTable("plIncomeTable", ops, "income");
+  renderPLTable("plExpenseTable", ops, "expense");
+
+  renderCashFlowTable(range, srcFilter);
+}
+
+function renderCashFlowTable(range, srcFilter){
+  var container = document.getElementById("cashFlowTable");
+  container.innerHTML = "";
+
+  var rows = state.accounts.map(function(acc){
+    var opening = 0, inflow = 0, outflow = 0;
+    state.operations.forEach(function(o){
+      if(o.account !== acc.key) return;
+      if(srcFilter && o.source !== srcFilter) return;
+      var isBefore = range && new Date(o.date) < range.start;
+      if(isBefore){
+        opening += o.type === "income" ? o.amount : -o.amount;
+      } else if(inRange(o.date, range)){
+        if(o.type === "income") inflow += o.amount; else outflow += o.amount;
+      }
+    });
+    var closing = opening + inflow - outflow;
+    return { acc:acc, opening:opening, inflow:inflow, outflow:outflow, closing:closing };
+  }).filter(function(r){ return r.opening !== 0 || r.inflow !== 0 || r.outflow !== 0; });
+
+  if(!rows.length){
+    var empty = document.createElement("div");
+    empty.className = "empty-state";
+    empty.textContent = "Нет операций по счетам за период.";
+    container.appendChild(empty);
+    return;
+  }
+
+  rows.forEach(function(r){
+    var wrap = document.createElement("div");
+    wrap.style.padding = "10px 0";
+    wrap.style.borderBottom = "1px solid var(--grid)";
+
+    var head = document.createElement("div");
+    head.style.display = "flex";
+    head.style.justifyContent = "space-between";
+    head.style.marginBottom = "6px";
+    var name = document.createElement("div");
+    name.className = "op-cat";
+    name.textContent = r.acc.label;
+    var close = document.createElement("div");
+    close.className = "op-amount " + (r.closing >= 0 ? "income" : "expense");
+    close.textContent = formatMoney(r.closing);
+    head.appendChild(name);
+    head.appendChild(close);
+
+    var sub = document.createElement("div");
+    sub.className = "op-meta";
+    sub.textContent = "Начало: " + formatMoney(r.opening) + "  ·  Приход: +" + formatMoney(r.inflow) + "  ·  Расход: −" + formatMoney(r.outflow);
+
+    wrap.appendChild(head);
+    wrap.appendChild(sub);
+    container.appendChild(wrap);
+  });
+
+  var totalClosing = rows.reduce(function(s,r){ return s+r.closing; }, 0);
+  var totalRow = document.createElement("div");
+  totalRow.className = "list-header";
+  totalRow.style.marginTop = "8px";
+  var tLabel = document.createElement("h2");
+  tLabel.textContent = "Итого остаток";
+  var tVal = document.createElement("span");
+  tVal.style.fontWeight = "700";
+  tVal.textContent = formatMoney(totalClosing);
+  totalRow.appendChild(tLabel);
+  totalRow.appendChild(tVal);
+  container.appendChild(totalRow);
 }
 
 function renderTrendChart(){
@@ -2138,6 +2329,10 @@ document.getElementById("importFile").addEventListener("change", function(e){
 });
 
 /* ---------- init ---------- */
+
+document.getElementById("reportsSourceFilter").addEventListener("change", function(){
+  renderReports();
+});
 
 loadState();
 renderSourceSelect();
