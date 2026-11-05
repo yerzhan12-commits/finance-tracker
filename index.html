@@ -30,7 +30,7 @@
     background:var(--page);
     color:var(--ink);
   }
-  .app{max-width:480px;margin:0 auto;padding:16px 16px 106px;}
+  .app{max-width:480px;margin:0 auto;padding:16px 16px 122px;}
   header{padding:8px 4px 16px;text-align:center;}
   header h1{font-size:22px;color:var(--blue);}
   header .subtitle{font-size:13px;color:var(--muted);margin-top:4px;}
@@ -44,9 +44,9 @@
     z-index:20;
   }
   .tab-btn{
-    flex:1;background:none;border:none;padding:16px 4px;
-    font-size:15px;font-weight:600;color:var(--muted);cursor:pointer;
-    min-height:56px;
+    flex:1;background:none;border:none;padding:20px 4px;
+    font-size:16px;font-weight:600;color:var(--muted);cursor:pointer;
+    min-height:72px;
   }
   .tab-btn.active{color:var(--blue);}
 
@@ -162,6 +162,7 @@
 
     <section id="tab-dashboard" class="tab-panel active">
       <div class="period-row" id="periodRow"></div>
+      <div class="field-row" id="periodCustomRange" style="display:none;margin-bottom:12px;"></div>
       <div class="kpi-row" id="kpiRow"></div>
 
       <div class="card">
@@ -381,6 +382,7 @@
 
     <section id="tab-reports" class="tab-panel">
       <div class="period-row" id="reportsPeriodRow"></div>
+      <div class="field-row" id="reportsPeriodCustomRange" style="display:none;margin-bottom:12px;"></div>
 
       <div class="card">
         <h2>ОПиУ — отчёт о прибылях и убытках</h2>
@@ -388,7 +390,7 @@
           <label>Источник</label>
           <select id="reportsSourceFilter"></select>
         </div>
-        <div class="kpi-row" id="plKpiRow"></div>
+        <div class="muted" id="plMarginNote" style="margin-bottom:10px;"></div>
         <div class="muted" style="margin:12px 0 4px;">Доходы по категориям</div>
         <div id="plIncomeTable"></div>
         <div class="muted" style="margin:14px 0 4px;">Расходы по категориям</div>
@@ -412,10 +414,17 @@
             <option value="securities">Ценные бумаги (Пайдакс)</option>
           </select>
         </div>
-        <div class="field">
+        <div class="field" id="assetNameDepositField">
           <label>Название</label>
-          <input type="text" id="assetName" list="assetNameOptions" placeholder="Например: Депозит Kaspi или SCHD" required>
-          <datalist id="assetNameOptions"></datalist>
+          <input type="text" id="assetName" placeholder="Например: Депозит Kaspi" required>
+        </div>
+        <div class="field" id="assetTickerField" style="display:none;">
+          <label>Тикер / бумага</label>
+          <select id="assetTickerSelect"></select>
+        </div>
+        <div class="field" id="assetNewTickerField" style="display:none;">
+          <label>Новый тикер</label>
+          <input type="text" id="assetNewTicker" placeholder="Например: VTI">
         </div>
         <div class="field-row">
           <div class="field">
@@ -430,10 +439,21 @@
             <input type="number" id="assetRate" min="0" step="0.01" inputmode="decimal" placeholder="Например: 530">
           </div>
         </div>
-        <div class="field">
+        <div class="field" id="assetAmountField">
           <label id="assetAmountLabel">Текущая сумма, ₸</label>
           <input type="number" id="assetAmount" min="0" step="0.01" inputmode="decimal" placeholder="0" required>
         </div>
+        <div class="field-row" id="assetQtyPriceRow" style="display:none;">
+          <div class="field">
+            <label id="assetQuantityLabel">Количество</label>
+            <input type="number" id="assetQuantity" min="0" step="0.0001" inputmode="decimal" placeholder="0">
+          </div>
+          <div class="field">
+            <label id="assetAvgPriceLabel">Цена за штуку, ₸</label>
+            <input type="number" id="assetAvgPrice" min="0" step="0.01" inputmode="decimal" placeholder="0">
+          </div>
+        </div>
+        <div class="muted" id="assetPositionNote" style="display:none;margin:-6px 0 14px;"></div>
         <div class="field">
           <label>Заметка (необязательно)</label>
           <input type="text" id="assetNote" placeholder="">
@@ -531,7 +551,6 @@ var CATEGORY_SUGGESTIONS = {
 };
 
 var SUPPLIER_SEED = ["Гүлзира","Анық","Әсел","Витя","Купи мама","Хоргос","Бижутерия","Сөмке"];
-var TICKER_SEED = ["SCHD","VNQ","IAUM","VXUS","XLP","VTI","SMH"];
 
 /* chart colors (dark theme) */
 var C_BLUE = "#3987e5";
@@ -549,9 +568,7 @@ var TREND_MONTHS = 6;
 var PERIOD_PRESETS = [
   { key:"month",     label:"Этот месяц" },
   { key:"lastMonth", label:"Прошлый месяц" },
-  { key:"3m",        label:"3 месяца" },
-  { key:"year",      label:"Год" },
-  { key:"all",       label:"Всё время" }
+  { key:"custom",    label:"Выбрать период" }
 ];
 
 function defaultCategories(){
@@ -559,7 +576,7 @@ function defaultCategories(){
 }
 
 var state = { operations:[], assets:[], sources:DEFAULT_SOURCES.slice(), accounts:DEFAULT_ACCOUNTS.slice(), categories:defaultCategories() };
-var currentPeriod = "month";
+var sharedPeriod = { key:"month", customFrom:null, customTo:null };
 
 /* ---------- storage ---------- */
 
@@ -581,6 +598,12 @@ function loadState(){
         }
         state.sources.forEach(function(s){
           if(!state.categories[s.key]) state.categories[s.key] = { income:[], expense:[] };
+        });
+        state.assets.forEach(function(a){
+          if(a.type === "securities" && (typeof a.quantity !== "number" || typeof a.avgCost !== "number")){
+            a.quantity = typeof a.quantity === "number" ? a.quantity : 1;
+            a.avgCost = typeof a.avgCost === "number" ? a.avgCost : (a.amount || 0);
+          }
         });
       }
     }
@@ -684,23 +707,22 @@ function lastNMonthKeys(n){
   return out;
 }
 
-function periodRange(key){
+function getPeriodRange(){
   var now = new Date();
   var start, end;
-  if(key === "month"){
+  if(sharedPeriod.key === "month"){
     start = new Date(now.getFullYear(), now.getMonth(), 1);
     end = new Date(now.getFullYear(), now.getMonth()+1, 1);
-  } else if(key === "lastMonth"){
+  } else if(sharedPeriod.key === "lastMonth"){
     start = new Date(now.getFullYear(), now.getMonth()-1, 1);
     end = new Date(now.getFullYear(), now.getMonth(), 1);
-  } else if(key === "3m"){
-    start = new Date(now.getFullYear(), now.getMonth()-2, 1);
-    end = new Date(now.getFullYear(), now.getMonth()+1, 1);
-  } else if(key === "year"){
-    start = new Date(now.getFullYear(), 0, 1);
-    end = new Date(now.getFullYear()+1, 0, 1);
+  } else if(sharedPeriod.key === "custom"){
+    if(!sharedPeriod.customFrom || !sharedPeriod.customTo) return null;
+    start = new Date(sharedPeriod.customFrom);
+    end = new Date(sharedPeriod.customTo);
+    end.setDate(end.getDate() + 1);
   } else {
-    return null; // all time
+    return null;
   }
   return { start:start, end:end };
 }
@@ -814,7 +836,7 @@ function resolveExpenseSource(){
 }
 
 function updateSupplierFieldVisibilityForExpense(){
-  opSupplierField.style.display = resolveExpenseSource() === "shop" ? "" : "none";
+  opSupplierField.style.display = "";
 }
 
 opCategoryExpense.addEventListener("change", function(){
@@ -854,21 +876,6 @@ function updateSupplierOptions(){
   var used = state.operations.map(function(o){ return o.supplier; }).filter(Boolean);
   var seen = {};
   SUPPLIER_SEED.concat(used).forEach(function(name){
-    var key = name.toLowerCase();
-    if(seen[key]) return;
-    seen[key] = true;
-    var opt = document.createElement("option");
-    opt.value = name;
-    dl.appendChild(opt);
-  });
-}
-
-function updateAssetNameOptions(){
-  var dl = document.getElementById("assetNameOptions");
-  dl.innerHTML = "";
-  var used = state.assets.map(function(a){ return a.name; });
-  var seen = {};
-  TICKER_SEED.concat(used).forEach(function(name){
     var key = name.toLowerCase();
     if(seen[key]) return;
     seen[key] = true;
@@ -1249,7 +1256,7 @@ opForm.addEventListener("submit", function(e){
   if(currentOpType === "expense"){
     source = resolveExpenseSource();
     category = opCategoryExpense.value === "other" ? (opExpenseOtherCategory.value || "Прочее").trim() : opCategoryExpense.value.split("::")[1];
-    supplier = source === "shop" ? (opSupplier.value || "").trim() : "";
+    supplier = (opSupplier.value || "").trim();
   } else {
     source = opSourceIncome.value;
     category = opCategoryIncome.value === "other" ? (opIncomeOtherCategory.value || "Прочее").trim() : opCategoryIncome.value;
@@ -1523,35 +1530,173 @@ function buildCategoryDayDetail(container, type, cat, range){
 
 var assetForm = document.getElementById("assetForm");
 var assetType = document.getElementById("assetType");
+var assetNameDepositField = document.getElementById("assetNameDepositField");
 var assetName = document.getElementById("assetName");
+var assetTickerField = document.getElementById("assetTickerField");
+var assetTickerSelect = document.getElementById("assetTickerSelect");
+var assetNewTickerField = document.getElementById("assetNewTickerField");
+var assetNewTicker = document.getElementById("assetNewTicker");
 var assetCurrency = document.getElementById("assetCurrency");
 var assetRateField = document.getElementById("assetRateField");
 var assetRate = document.getElementById("assetRate");
+var assetAmountField = document.getElementById("assetAmountField");
 var assetAmountLabel = document.getElementById("assetAmountLabel");
 var assetAmount = document.getElementById("assetAmount");
+var assetQtyPriceRow = document.getElementById("assetQtyPriceRow");
+var assetAvgPriceLabel = document.getElementById("assetAvgPriceLabel");
+var assetQuantity = document.getElementById("assetQuantity");
+var assetAvgPrice = document.getElementById("assetAvgPrice");
+var assetPositionNote = document.getElementById("assetPositionNote");
 var assetNote = document.getElementById("assetNote");
 var assetSubmitBtn = document.getElementById("assetSubmitBtn");
 var assetCancelEditBtn = document.getElementById("assetCancelEditBtn");
 var editingAssetId = null;
+var NEW_TICKER_VALUE = "__new__";
+
+function assetPositionValue(a){
+  return a.type === "securities" ? (a.quantity||0) * (a.avgCost||0) : (a.amount||0);
+}
 
 function assetValueKZT(a){
-  if(a.currency === "USD") return a.amount * (a.rate || 0);
-  return a.amount;
+  var v = assetPositionValue(a);
+  if(a.currency === "USD") return v * (a.rate || 0);
+  return v;
 }
 
 function updateAssetCurrencyFields(){
   var isUsd = assetCurrency.value === "USD";
   assetRateField.style.display = isUsd ? "" : "none";
   assetAmountLabel.textContent = isUsd ? "Текущая сумма, $" : "Текущая сумма, ₸";
+  assetAvgPriceLabel.textContent = isUsd ? "Цена за штуку, $" : "Цена за штуку, ₸";
 }
 assetCurrency.addEventListener("change", updateAssetCurrencyFields);
 updateAssetCurrencyFields();
+
+function securitiesTickers(){
+  var seen = {};
+  var out = [];
+  state.assets.filter(function(a){ return a.type === "securities"; }).forEach(function(a){
+    var key = a.name.toLowerCase();
+    if(seen[key]) return;
+    seen[key] = true;
+    out.push(a.name);
+  });
+  out.sort();
+  return out;
+}
+
+function populateTickerSelect(selectedName){
+  var tickers = securitiesTickers();
+  assetTickerSelect.innerHTML = "";
+  tickers.forEach(function(t){
+    var opt = document.createElement("option");
+    opt.value = t;
+    opt.textContent = t;
+    assetTickerSelect.appendChild(opt);
+  });
+  var newOpt = document.createElement("option");
+  newOpt.value = NEW_TICKER_VALUE;
+  newOpt.textContent = "+ Добавить новый тикер";
+  assetTickerSelect.appendChild(newOpt);
+  assetTickerSelect.value = (selectedName && tickers.indexOf(selectedName) !== -1) ? selectedName : NEW_TICKER_VALUE;
+}
+
+function updateNewTickerVisibility(){
+  assetNewTickerField.style.display = assetTickerSelect.value === NEW_TICKER_VALUE ? "" : "none";
+}
+
+function getTickerMode(){
+  if(editingAssetId) return "editPosition";
+  return assetTickerSelect.value === NEW_TICKER_VALUE ? "new" : "add";
+}
+
+function fmtQty(n){ return (n||0).toLocaleString("ru-RU", { maximumFractionDigits:4 }); }
+function fmtPrice(n){ return (n||0).toLocaleString("ru-RU", { maximumFractionDigits:2 }); }
+
+function refreshSecuritiesModeUI(){
+  var mode = getTickerMode();
+  if(mode === "editPosition") return;
+  assetQuantity.value = "";
+  assetAvgPrice.value = "";
+  if(mode === "add"){
+    var existing = state.assets.filter(function(a){ return a.type === "securities" && a.name === assetTickerSelect.value; })[0];
+    if(existing){
+      assetCurrency.value = existing.currency || "KZT";
+      updateAssetCurrencyFields();
+      assetRate.value = existing.rate || "";
+      assetNote.value = existing.note || "";
+      var curSym = existing.currency === "USD" ? "$" : "₸";
+      assetPositionNote.style.display = "";
+      assetPositionNote.textContent = "Уже в портфеле: " + fmtQty(existing.quantity) + " шт. · средняя цена " + curSym + fmtPrice(existing.avgCost) + ". Укажите количество и цену ЭТОЙ покупки — добавится к позиции.";
+    } else {
+      assetPositionNote.style.display = "none";
+    }
+    assetSubmitBtn.textContent = "Добавить к позиции";
+  } else {
+    assetNote.value = "";
+    assetPositionNote.style.display = "none";
+    assetSubmitBtn.textContent = "Сохранить актив";
+  }
+}
+
+function setAssetFieldVisibility(isSecurities){
+  assetNameDepositField.style.display = isSecurities ? "none" : "";
+  assetTickerField.style.display = isSecurities ? "" : "none";
+  assetAmountField.style.display = isSecurities ? "none" : "";
+  assetQtyPriceRow.style.display = isSecurities ? "" : "none";
+  assetName.required = !isSecurities;
+  assetAmount.required = !isSecurities;
+  assetQuantity.required = isSecurities;
+  assetAvgPrice.required = isSecurities;
+  if(!isSecurities){
+    assetNewTickerField.style.display = "none";
+    assetPositionNote.style.display = "none";
+  }
+}
+
+function updateAssetTypeUI(){
+  var isSecurities = assetType.value === "securities";
+  setAssetFieldVisibility(isSecurities);
+  if(isSecurities){
+    populateTickerSelect();
+    updateNewTickerVisibility();
+    refreshSecuritiesModeUI();
+  }
+}
+assetType.addEventListener("change", function(){
+  if(editingAssetId) exitAssetEditMode();
+  assetAmount.value = "";
+  assetNote.value = "";
+  updateAssetTypeUI();
+});
+
+assetTickerSelect.addEventListener("change", function(){
+  if(editingAssetId) exitAssetEditMode();
+  updateNewTickerVisibility();
+  refreshSecuritiesModeUI();
+  if(assetTickerSelect.value === NEW_TICKER_VALUE) assetNewTicker.focus();
+});
+
+function resolveAssetName(){
+  if(assetType.value === "securities"){
+    return assetTickerSelect.value === NEW_TICKER_VALUE ? (assetNewTicker.value || "").trim() : assetTickerSelect.value;
+  }
+  return (assetName.value || "").trim();
+}
 
 function clearAssetFormInputs(){
   assetName.value = "";
   assetAmount.value = "";
   assetRate.value = "";
   assetNote.value = "";
+  assetNewTicker.value = "";
+  assetQuantity.value = "";
+  assetAvgPrice.value = "";
+  if(assetType.value === "securities"){
+    populateTickerSelect();
+    updateNewTickerVisibility();
+    refreshSecuritiesModeUI();
+  }
 }
 
 function exitAssetEditMode(){
@@ -1568,11 +1713,21 @@ assetCancelEditBtn.addEventListener("click", function(){
 function startEditAsset(a){
   editingAssetId = a.id;
   assetType.value = a.type;
-  assetName.value = a.name;
+  var isSecurities = a.type === "securities";
+  setAssetFieldVisibility(isSecurities);
+  if(isSecurities){
+    populateTickerSelect(a.name);
+    updateNewTickerVisibility();
+    assetPositionNote.style.display = "none";
+    assetQuantity.value = a.quantity || "";
+    assetAvgPrice.value = a.avgCost || "";
+  } else {
+    assetName.value = a.name;
+    assetAmount.value = a.amount;
+  }
   assetCurrency.value = a.currency || "KZT";
   updateAssetCurrencyFields();
   assetRate.value = a.rate || "";
-  assetAmount.value = a.amount;
   assetNote.value = a.note || "";
   assetSubmitBtn.textContent = "Сохранить изменения";
   assetCancelEditBtn.style.display = "";
@@ -1581,33 +1736,68 @@ function startEditAsset(a){
 
 assetForm.addEventListener("submit", function(e){
   e.preventDefault();
-  var amount = parseFloat(assetAmount.value);
-  if(!amount || amount <= 0) return;
+  var name = resolveAssetName();
+  if(!name){
+    alert("Укажите название актива или тикер.");
+    return;
+  }
   var currency = assetCurrency.value;
   var rate = currency === "USD" ? (parseFloat(assetRate.value) || 0) : 0;
-  var record = {
-    type: assetType.value,
-    name: (assetName.value || "").trim(),
-    currency: currency,
-    rate: rate,
-    amount: amount,
-    note: (assetNote.value || "").trim(),
-    updated: todayStr()
-  };
-  if(editingAssetId){
-    var idx = state.assets.findIndex(function(x){ return x.id === editingAssetId; });
-    if(idx !== -1){
-      record.id = editingAssetId;
-      state.assets[idx] = record;
+  var note = (assetNote.value || "").trim();
+
+  if(assetType.value === "securities"){
+    var qty = parseFloat(assetQuantity.value);
+    var price = parseFloat(assetAvgPrice.value);
+    if(!qty || qty <= 0 || !(price >= 0)){
+      alert("Укажите количество и цену за штуку этой покупки.");
+      return;
     }
-    exitAssetEditMode();
+    var mode = getTickerMode();
+    if(mode === "editPosition"){
+      var idx = state.assets.findIndex(function(x){ return x.id === editingAssetId; });
+      if(idx !== -1){
+        state.assets[idx].name = name;
+        state.assets[idx].quantity = qty;
+        state.assets[idx].avgCost = price;
+        state.assets[idx].currency = currency;
+        state.assets[idx].rate = rate;
+        state.assets[idx].note = note;
+        state.assets[idx].updated = todayStr();
+      }
+      exitAssetEditMode();
+    } else if(mode === "add"){
+      var existing = state.assets.filter(function(a){ return a.type === "securities" && a.name === name; })[0];
+      if(existing){
+        var totalQty = (existing.quantity||0) + qty;
+        var totalCost = (existing.quantity||0) * (existing.avgCost||0) + qty * price;
+        existing.quantity = totalQty;
+        existing.avgCost = totalQty > 0 ? totalCost / totalQty : 0;
+        existing.currency = currency;
+        existing.rate = rate;
+        if(note) existing.note = note;
+        existing.updated = todayStr();
+      } else {
+        state.assets.push({ id:uid(), type:"securities", name:name, currency:currency, rate:rate, quantity:qty, avgCost:price, note:note, updated:todayStr() });
+      }
+    } else {
+      state.assets.push({ id:uid(), type:"securities", name:name, currency:currency, rate:rate, quantity:qty, avgCost:price, note:note, updated:todayStr() });
+    }
   } else {
-    record.id = uid();
-    state.assets.push(record);
+    var amount = parseFloat(assetAmount.value);
+    if(!amount || amount <= 0) return;
+    var record = { type:"deposit", name:name, currency:currency, rate:rate, amount:amount, note:note, updated:todayStr() };
+    if(editingAssetId){
+      var idx2 = state.assets.findIndex(function(x){ return x.id === editingAssetId; });
+      if(idx2 !== -1){ record.id = editingAssetId; state.assets[idx2] = record; }
+      exitAssetEditMode();
+    } else {
+      record.id = uid();
+      state.assets.push(record);
+    }
   }
+
   saveState();
   clearAssetFormInputs();
-  updateAssetNameOptions();
   renderAssets();
   renderDashboard();
 });
@@ -1645,7 +1835,12 @@ function renderAssetGroup(type, listId, totalId){
     meta.className = "op-meta";
     var isUsd = a.currency === "USD";
     var rateNote = isUsd ? ("курс " + a.rate) : "";
-    meta.textContent = "Обновлено " + a.updated + (rateNote ? " · " + rateNote : "") + (a.note ? " · " + a.note : "");
+    if(a.type === "securities"){
+      var curSym = isUsd ? "$" : "₸";
+      meta.textContent = fmtQty(a.quantity) + " шт. · средняя цена " + curSym + fmtPrice(a.avgCost) + " · Обновлено " + a.updated + (rateNote ? " · " + rateNote : "") + (a.note ? " · " + a.note : "");
+    } else {
+      meta.textContent = "Обновлено " + a.updated + (rateNote ? " · " + rateNote : "") + (a.note ? " · " + a.note : "");
+    }
     main.appendChild(name);
     main.appendChild(meta);
 
@@ -1653,10 +1848,11 @@ function renderAssetGroup(type, listId, totalId){
     right.className = "op-right";
     var amt = document.createElement("div");
     amt.className = "op-amount";
+    var posValue = assetPositionValue(a);
     if(isUsd){
       amt.innerHTML = "";
       var line1 = document.createElement("div");
-      line1.textContent = "$" + a.amount.toLocaleString("en-US");
+      line1.textContent = "$" + posValue.toLocaleString("en-US");
       var line2 = document.createElement("div");
       line2.style.fontSize = "11px";
       line2.style.fontWeight = "400";
@@ -1665,7 +1861,7 @@ function renderAssetGroup(type, listId, totalId){
       amt.appendChild(line1);
       amt.appendChild(line2);
     } else {
-      amt.textContent = formatMoney(a.amount);
+      amt.textContent = formatMoney(posValue);
     }
     var edit = document.createElement("button");
     edit.className = "del-btn";
@@ -1696,19 +1892,61 @@ function renderAssetGroup(type, listId, totalId){
 
 /* ---------- dashboard ---------- */
 
-function renderPeriodRow(){
-  var row = document.getElementById("periodRow");
+function renderPeriodRow(rowId, customId){
+  var row = document.getElementById(rowId);
+  var customRow = document.getElementById(customId);
   row.innerHTML = "";
   PERIOD_PRESETS.forEach(function(p){
     var btn = document.createElement("button");
-    btn.className = "period-btn" + (p.key === currentPeriod ? " active" : "");
+    btn.className = "period-btn" + (p.key === sharedPeriod.key ? " active" : "");
     btn.textContent = p.label;
     btn.addEventListener("click", function(){
-      currentPeriod = p.key;
+      sharedPeriod.key = p.key;
+      if(p.key === "custom" && !sharedPeriod.customFrom){
+        var t = todayStr();
+        sharedPeriod.customFrom = t;
+        sharedPeriod.customTo = t;
+      }
       renderDashboard();
     });
     row.appendChild(btn);
   });
+
+  customRow.innerHTML = "";
+  if(sharedPeriod.key === "custom"){
+    customRow.style.display = "";
+    var fFrom = document.createElement("div");
+    fFrom.className = "field";
+    var lFrom = document.createElement("label");
+    lFrom.textContent = "С";
+    var iFrom = document.createElement("input");
+    iFrom.type = "date";
+    iFrom.value = sharedPeriod.customFrom || "";
+    iFrom.addEventListener("change", function(){ sharedPeriod.customFrom = iFrom.value; renderDashboard(); });
+    fFrom.appendChild(lFrom);
+    fFrom.appendChild(iFrom);
+
+    var fTo = document.createElement("div");
+    fTo.className = "field";
+    var lTo = document.createElement("label");
+    lTo.textContent = "По";
+    var iTo = document.createElement("input");
+    iTo.type = "date";
+    iTo.value = sharedPeriod.customTo || "";
+    iTo.addEventListener("change", function(){ sharedPeriod.customTo = iTo.value; renderDashboard(); });
+    fTo.appendChild(lTo);
+    fTo.appendChild(iTo);
+
+    customRow.appendChild(fFrom);
+    customRow.appendChild(fTo);
+  } else {
+    customRow.style.display = "none";
+  }
+}
+
+function renderAllPeriodRows(){
+  renderPeriodRow("periodRow", "periodCustomRange");
+  renderPeriodRow("reportsPeriodRow", "reportsPeriodCustomRange");
 }
 
 function statTile(label, value, cls){
@@ -1726,9 +1964,9 @@ function statTile(label, value, cls){
 }
 
 function renderDashboard(){
-  renderPeriodRow();
+  renderAllPeriodRows();
 
-  var range = periodRange(currentPeriod);
+  var range = getPeriodRange();
   var ops = state.operations.filter(function(o){ return inRange(o.date, range); });
 
   var income = ops.filter(function(o){ return o.type === "income"; }).reduce(function(s,o){ return s+o.amount; },0);
@@ -1754,23 +1992,6 @@ function renderDashboard(){
 }
 
 /* ---------- reports: ОПиУ / ДДС ---------- */
-
-var reportsPeriod = "month";
-
-function renderReportsPeriodRow(){
-  var row = document.getElementById("reportsPeriodRow");
-  row.innerHTML = "";
-  PERIOD_PRESETS.forEach(function(p){
-    var btn = document.createElement("button");
-    btn.className = "period-btn" + (p.key === reportsPeriod ? " active" : "");
-    btn.textContent = p.label;
-    btn.addEventListener("click", function(){
-      reportsPeriod = p.key;
-      renderReports();
-    });
-    row.appendChild(btn);
-  });
-}
 
 function populateReportsSourceFilter(){
   var sel = document.getElementById("reportsSourceFilter");
@@ -1823,10 +2044,9 @@ function renderPLTable(containerId, ops, type){
 }
 
 function renderReports(){
-  renderReportsPeriodRow();
   populateReportsSourceFilter();
 
-  var range = periodRange(reportsPeriod);
+  var range = getPeriodRange();
   var srcFilter = document.getElementById("reportsSourceFilter").value;
   var ops = state.operations.filter(function(o){
     return inRange(o.date, range) && (!srcFilter || o.source === srcFilter);
@@ -1835,14 +2055,14 @@ function renderReports(){
   var income = ops.filter(function(o){ return o.type === "income"; }).reduce(function(s,o){ return s+o.amount; },0);
   var expense = ops.filter(function(o){ return o.type === "expense"; }).reduce(function(s,o){ return s+o.amount; },0);
   var net = income - expense;
-
-  var kpiRow = document.getElementById("plKpiRow");
-  kpiRow.innerHTML = "";
-  kpiRow.appendChild(statTile("Доходы", formatMoney(income)));
-  kpiRow.appendChild(statTile("Расходы", formatMoney(expense)));
-  kpiRow.appendChild(statTile("Прибыль", formatSigned(net), net >= 0 ? "good" : "bad"));
   var marginLabel = income > 0 ? Math.round(net/income*100) + "%" : "—";
-  kpiRow.appendChild(statTile("Рентабельность", marginLabel, net >= 0 ? "good" : "bad"));
+
+  var note = document.getElementById("plMarginNote");
+  if(srcFilter){
+    note.textContent = "По источнику: Доходы " + formatMoney(income) + " · Расходы " + formatMoney(expense) + " · Прибыль " + formatSigned(net) + " · Рентабельность " + marginLabel;
+  } else {
+    note.textContent = "Рентабельность за период: " + marginLabel + " (общие доходы/расходы/прибыль — на вкладке «Обзор»)";
+  }
 
   renderPLTable("plIncomeTable", ops, "income");
   renderPLTable("plExpenseTable", ops, "expense");
@@ -2340,7 +2560,7 @@ renderSourceList();
 renderAccountSelect();
 renderAccountList();
 updateSupplierOptions();
-updateAssetNameOptions();
+updateAssetTypeUI();
 renderOperations();
 renderAssets();
 renderDashboard();
