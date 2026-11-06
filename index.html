@@ -2008,13 +2008,19 @@ function renderDashboard(){
   var net = income - expense;
   var capital = state.assets.reduce(function(s,a){ return s+assetValueKZT(a); },0);
 
-  // "Расход — бизнес" — строго эти 4 категории (по просьбе); все остальные
+  // "Шығын-бизнес" — строго эти 4 категории (по просьбе); все остальные
   // категории расходов (независимо от источника) идут в "Отбасы шығыны".
+  // Доход-бизнес берём по источнику "Магазин" (как в карточке "Прибыльность
+  // магазина" ниже) — отдельного списка бизнес-категорий дохода не задавали.
   var BIZ_EXPENSE_CATEGORIES = ["Дүкен Жалғас Али", "Закупка товара", "Карго", "Дүкен коммуналка"];
+  var bizIncome = ops.filter(function(o){ return o.type === "income" && o.source === "shop"; })
+    .reduce(function(s,o){ return s+o.amount; },0);
   var bizExpense = ops.filter(function(o){ return o.type === "expense" && BIZ_EXPENSE_CATEGORIES.indexOf(o.category) !== -1; })
     .reduce(function(s,o){ return s+o.amount; },0);
   var famExpense = ops.filter(function(o){ return o.type === "expense" && BIZ_EXPENSE_CATEGORIES.indexOf(o.category) === -1; })
     .reduce(function(s,o){ return s+o.amount; },0);
+  var bizProfit = bizIncome - bizExpense;
+  var bizMargin = bizIncome > 0 ? (bizProfit / bizIncome * 100) : 0;
 
   var kpiRow = document.getElementById("kpiRow");
   kpiRow.innerHTML = "";
@@ -2022,8 +2028,10 @@ function renderDashboard(){
   kpiRow.appendChild(statTile("Расходы", formatMoney(expense)));
   kpiRow.appendChild(statTile("Прибыль", formatSigned(net), net >= 0 ? "good" : "bad"));
   kpiRow.appendChild(statTile("Капитал (депозиты + бумаги)", formatMoney(capital)));
-  kpiRow.appendChild(statTile("Расход — бизнес", formatMoney(bizExpense)));
+  kpiRow.appendChild(statTile("Шығын-бизнес", formatMoney(bizExpense)));
   kpiRow.appendChild(statTile("Отбасы шығыны", formatMoney(famExpense)));
+  kpiRow.appendChild(statTile("Прибыль — бизнес", formatSigned(bizProfit), bizProfit >= 0 ? "good" : "bad"));
+  kpiRow.appendChild(statTile("Маржа — бизнес, %", bizMargin.toFixed(0) + " %", bizMargin >= 0 ? "good" : "bad"));
 
   renderTrendChart();
   renderCategoryChart(ops);
