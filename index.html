@@ -118,8 +118,6 @@
   .period-btn.active{background:var(--blue);color:#fff;border-color:var(--blue);}
 
   .kpi-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;}
-  .split-two{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
-  @media (max-width:520px){ .split-two{grid-template-columns:1fr;} }
   .stat-tile{
     background:var(--surface);border:1px solid var(--border);border-radius:14px;
     padding:12px 14px;
@@ -195,21 +193,6 @@
       <div class="card">
         <h2>Расходы по счетам</h2>
         <div id="expenseAccountChart" class="chart-box"></div>
-      </div>
-
-      <div class="card">
-        <h2>Бизнес vs Семья</h2>
-        <div class="kpi-row" id="bizFamKpiRow"></div>
-        <div class="split-two">
-          <div>
-            <div class="muted" style="margin-bottom:8px;">Бизнес — расходы по категориям</div>
-            <div id="bizExpenseList"></div>
-          </div>
-          <div>
-            <div class="muted" style="margin-bottom:8px;">Семья — расходы по категориям</div>
-            <div id="famExpenseList"></div>
-          </div>
-        </div>
       </div>
 
       <div class="card shop-card">
@@ -2025,12 +2008,22 @@ function renderDashboard(){
   var net = income - expense;
   var capital = state.assets.reduce(function(s,a){ return s+assetValueKZT(a); },0);
 
+  // "Расход — бизнес" — строго эти 4 категории (по просьбе); все остальные
+  // категории расходов (независимо от источника) идут в "Отбасы шығыны".
+  var BIZ_EXPENSE_CATEGORIES = ["Дүкен Жалғас Али", "Закупка товара", "Карго", "Дүкен коммуналка"];
+  var bizExpense = ops.filter(function(o){ return o.type === "expense" && BIZ_EXPENSE_CATEGORIES.indexOf(o.category) !== -1; })
+    .reduce(function(s,o){ return s+o.amount; },0);
+  var famExpense = ops.filter(function(o){ return o.type === "expense" && BIZ_EXPENSE_CATEGORIES.indexOf(o.category) === -1; })
+    .reduce(function(s,o){ return s+o.amount; },0);
+
   var kpiRow = document.getElementById("kpiRow");
   kpiRow.innerHTML = "";
   kpiRow.appendChild(statTile("Доходы", formatMoney(income)));
   kpiRow.appendChild(statTile("Расходы", formatMoney(expense)));
   kpiRow.appendChild(statTile("Прибыль", formatSigned(net), net >= 0 ? "good" : "bad"));
   kpiRow.appendChild(statTile("Капитал (депозиты + бумаги)", formatMoney(capital)));
+  kpiRow.appendChild(statTile("Расход — бизнес", formatMoney(bizExpense)));
+  kpiRow.appendChild(statTile("Отбасы шығыны", formatMoney(famExpense)));
 
   renderTrendChart();
   renderCategoryChart(ops);
@@ -2038,27 +2031,8 @@ function renderDashboard(){
   renderSourceChart(ops, "expense", "expenseSourceChart");
   renderAccountChart(ops, "income", "incomeAccountChart");
   renderAccountChart(ops, "expense", "expenseAccountChart");
-  renderBizFamilySplit(ops);
   renderShopSection(range);
   renderReports();
-}
-
-/* ---------- бизнес vs семья ---------- */
-
-function renderBizFamilySplit(ops){
-  var bizExpense = ops.filter(function(o){ return o.type === "expense" && o.source === "shop"; });
-  var famExpense = ops.filter(function(o){ return o.type === "expense" && o.source === "personal"; });
-
-  var bizTotal = bizExpense.reduce(function(s,o){ return s+o.amount; },0);
-  var famTotal = famExpense.reduce(function(s,o){ return s+o.amount; },0);
-
-  var kpiRow = document.getElementById("bizFamKpiRow");
-  kpiRow.innerHTML = "";
-  kpiRow.appendChild(statTile("Бизнес, расходы", formatMoney(bizTotal)));
-  kpiRow.appendChild(statTile("Семья, расходы", formatMoney(famTotal)));
-
-  renderPLTable("bizExpenseList", bizExpense, "expense");
-  renderPLTable("famExpenseList", famExpense, "expense");
 }
 
 /* ---------- reports: ОПиУ / ДДС ---------- */
