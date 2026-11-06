@@ -118,6 +118,8 @@
   .period-btn.active{background:var(--blue);color:#fff;border-color:var(--blue);}
 
   .kpi-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;}
+  .split-two{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+  @media (max-width:520px){ .split-two{grid-template-columns:1fr;} }
   .stat-tile{
     background:var(--surface);border:1px solid var(--border);border-radius:14px;
     padding:12px 14px;
@@ -193,6 +195,21 @@
       <div class="card">
         <h2>Расходы по счетам</h2>
         <div id="expenseAccountChart" class="chart-box"></div>
+      </div>
+
+      <div class="card">
+        <h2>Бизнес vs Семья</h2>
+        <div class="kpi-row" id="bizFamKpiRow"></div>
+        <div class="split-two">
+          <div>
+            <div class="muted" style="margin-bottom:8px;">Бизнес — расходы по категориям</div>
+            <div id="bizExpenseList"></div>
+          </div>
+          <div>
+            <div class="muted" style="margin-bottom:8px;">Семья — расходы по категориям</div>
+            <div id="famExpenseList"></div>
+          </div>
+        </div>
       </div>
 
       <div class="card shop-card">
@@ -543,8 +560,8 @@ var DEFAULT_ACCOUNTS = [
 ];
 
 var CATEGORY_SUGGESTIONS = {
-  shop:       { income:["Продажи опт","Продажи розница","Прочий доход"], expense:["Закупка товара","Дүкен","Карго","Қайтарым","Дүкен коммуналка","Аренда","Реклама","Логистика","Зарплата","Прочее"] },
-  personal:   { income:["Прочий доход"], expense:["Ипотека","Несие","Азық-түлік","АИ (топливо)","Көлік ТО","Көлік құаттау","Кафе","Киім","Кино","Мектеп-бақша","Дәрігер","Дәріхана","Алименты","Сыйлық","Ұшақ-поезд","Комуналка","Садақа","Әке","Анашым","Әмина","Рамазан","Жалғас Али","Прочее"] },
+  shop:       { income:["Продажи опт","Продажи розница","Прочий доход"], expense:["Закупка товара","Дүкен","Дүкен Жалғас Али","Карго","Қайтарым","Дүкен коммуналка","Аренда","Реклама","Логистика","Зарплата","Прочее"] },
+  personal:   { income:["Прочий доход"], expense:["Ипотека","Несие","Азық-түлік","АИ (топливо)","Көлік ТО","Көлік құаттау","Кафе","Киім","Кино","Мектеп-бақша","Дәрігер","Дәріхана","Алименты","Сыйлық","Ұшақ-поезд","Комуналка","Садақа","Әке","Анашым","Әмина","Рамазан","Прочее"] },
   pension:    { income:["Пенсия"], expense:["Прочее"] },
   securities: { income:["Дивиденды","Продажа бумаг","Прибыль"], expense:["Покупка бумаг","Комиссия"] },
   deposit:    { income:["Проценты"], expense:["Пополнение вклада"] }
@@ -612,6 +629,40 @@ function loadState(){
 
 function saveState(){
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+/* Жалғас Али — это магазин, но исторически операции заводились под
+   источником "Личное". Переносим все такие операции в "Магазин" и
+   переименовываем категорию, чтобы бизнес/семейные расходы считались
+   правильно. Безопасно запускать повторно — трогает только совпадения. */
+function migrateJalgasAli(){
+  var OLD_CAT = "Жалғас Али";
+  var NEW_CAT = "Дүкен Жалғас Али";
+  var changed = false;
+
+  state.operations.forEach(function(o){
+    if(o.category === OLD_CAT){
+      o.source = "shop";
+      o.category = NEW_CAT;
+      changed = true;
+    }
+  });
+
+  if(state.categories && state.categories.personal && Array.isArray(state.categories.personal.expense)){
+    var idx = state.categories.personal.expense.indexOf(OLD_CAT);
+    if(idx !== -1){
+      state.categories.personal.expense.splice(idx, 1);
+      changed = true;
+    }
+  }
+  if(state.categories && state.categories.shop && Array.isArray(state.categories.shop.expense)){
+    if(state.categories.shop.expense.indexOf(NEW_CAT) === -1){
+      state.categories.shop.expense.push(NEW_CAT);
+      changed = true;
+    }
+  }
+
+  if(changed) saveState();
 }
 
 function uid(){
@@ -1987,8 +2038,27 @@ function renderDashboard(){
   renderSourceChart(ops, "expense", "expenseSourceChart");
   renderAccountChart(ops, "income", "incomeAccountChart");
   renderAccountChart(ops, "expense", "expenseAccountChart");
+  renderBizFamilySplit(ops);
   renderShopSection(range);
   renderReports();
+}
+
+/* ---------- бизнес vs семья ---------- */
+
+function renderBizFamilySplit(ops){
+  var bizExpense = ops.filter(function(o){ return o.type === "expense" && o.source === "shop"; });
+  var famExpense = ops.filter(function(o){ return o.type === "expense" && o.source === "personal"; });
+
+  var bizTotal = bizExpense.reduce(function(s,o){ return s+o.amount; },0);
+  var famTotal = famExpense.reduce(function(s,o){ return s+o.amount; },0);
+
+  var kpiRow = document.getElementById("bizFamKpiRow");
+  kpiRow.innerHTML = "";
+  kpiRow.appendChild(statTile("Бизнес, расходы", formatMoney(bizTotal)));
+  kpiRow.appendChild(statTile("Семья, расходы", formatMoney(famTotal)));
+
+  renderPLTable("bizExpenseList", bizExpense, "expense");
+  renderPLTable("famExpenseList", famExpense, "expense");
 }
 
 /* ---------- reports: ОПиУ / ДДС ---------- */
@@ -2555,6 +2625,7 @@ document.getElementById("reportsSourceFilter").addEventListener("change", functi
 });
 
 loadState();
+migrateJalgasAli();
 renderSourceSelect();
 renderSourceList();
 renderAccountSelect();
