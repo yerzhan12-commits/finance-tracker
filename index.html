@@ -2022,6 +2022,12 @@ function renderDashboard(){
   var bizProfit = bizIncome - bizExpense;
   var bizMargin = bizIncome > 0 ? (bizProfit / bizIncome * 100) : 0;
 
+  // Та же маржа бизнеса, но ещё минус семейные расходы — показывает, что
+  // реально остаётся от дохода магазина после того, как из него же покрыли
+  // и бизнес-затраты, и жизнь семьи (отбасы шығыны).
+  var profitAfterFamily = bizProfit - famExpense;
+  var marginAfterFamily = bizIncome > 0 ? (profitAfterFamily / bizIncome * 100) : 0;
+
   var kpiRow = document.getElementById("kpiRow");
   kpiRow.innerHTML = "";
   kpiRow.appendChild(statTile("Доходы", formatMoney(income)));
@@ -2032,6 +2038,7 @@ function renderDashboard(){
   kpiRow.appendChild(statTile("Отбасы шығыны", formatMoney(famExpense)));
   kpiRow.appendChild(statTile("Прибыль — бизнес", formatSigned(bizProfit), bizProfit >= 0 ? "good" : "bad"));
   kpiRow.appendChild(statTile("Маржа — бизнес, %", bizMargin.toFixed(0) + " %", bizMargin >= 0 ? "good" : "bad"));
+  kpiRow.appendChild(statTile("Маржа — с учётом семьи, %", marginAfterFamily.toFixed(0) + " %", marginAfterFamily >= 0 ? "good" : "bad"));
 
   renderTrendChart();
   renderCategoryChart(ops);
