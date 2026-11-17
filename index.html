@@ -121,6 +121,23 @@
   }
   .period-btn.active{background:var(--blue);color:#fff;border-color:var(--blue);}
 
+  .chip-row{display:flex;flex-wrap:wrap;gap:8px;}
+  .chip{
+    padding:9px 14px;border-radius:20px;border:1px solid var(--border);
+    background:var(--page);color:var(--ink2);font-size:14px;cursor:pointer;white-space:nowrap;
+  }
+  .chip.active{background:var(--blue);color:#fff;border-color:var(--blue);}
+
+  .security-stats{display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;margin-top:6px;}
+  .security-stats .row{display:flex;justify-content:space-between;font-size:13px;gap:8px;}
+  .security-stats .row .k{color:var(--muted);}
+  .security-stats .row .v{font-weight:600;white-space:nowrap;}
+  .security-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;}
+  .security-head .ticker{font-size:16px;font-weight:700;}
+  .security-head .pnl{font-size:14px;font-weight:700;white-space:nowrap;}
+  .security-head .pnl.good{color:var(--good);}
+  .security-head .pnl.bad{color:var(--bad);}
+
   .kpi-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;}
   .stat-tile{
     background:var(--surface);border:1px solid var(--border);border-radius:14px;
@@ -424,7 +441,7 @@
         </div>
         <div class="field" id="assetTickerField" style="display:none;">
           <label>Тикер / бумага</label>
-          <select id="assetTickerSelect"></select>
+          <div class="chip-row" id="assetTickerChips"></div>
         </div>
         <div class="field" id="assetNewTickerField" style="display:none;">
           <label>Новый тикер</label>
@@ -453,9 +470,14 @@
             <input type="number" id="assetQuantity" min="0" step="0.0001" inputmode="decimal" placeholder="0">
           </div>
           <div class="field">
-            <label id="assetAvgPriceLabel">Цена за штуку, ₸</label>
+            <label id="assetAvgPriceLabel">Цена покупки за штуку, ₸</label>
             <input type="number" id="assetAvgPrice" min="0" step="0.01" inputmode="decimal" placeholder="0">
           </div>
+        </div>
+        <div class="field" id="assetCurrentPriceField" style="display:none;">
+          <label id="assetCurrentPriceLabel">Текущая цена за штуку, ₸</label>
+          <input type="number" id="assetCurrentPrice" min="0" step="0.01" inputmode="decimal" placeholder="0">
+          <div class="muted" style="margin-top:4px;">Вводится вручную — обновляй, когда проверяешь котировку.</div>
         </div>
         <div class="muted" id="assetPositionNote" style="display:none;margin:-6px 0 14px;"></div>
         <div class="field">
@@ -1615,7 +1637,6 @@ var assetType = document.getElementById("assetType");
 var assetNameDepositField = document.getElementById("assetNameDepositField");
 var assetName = document.getElementById("assetName");
 var assetTickerField = document.getElementById("assetTickerField");
-var assetTickerSelect = document.getElementById("assetTickerSelect");
 var assetNewTickerField = document.getElementById("assetNewTickerField");
 var assetNewTicker = document.getElementById("assetNewTicker");
 var assetCurrency = document.getElementById("assetCurrency");
@@ -1628,15 +1649,30 @@ var assetQtyPriceRow = document.getElementById("assetQtyPriceRow");
 var assetAvgPriceLabel = document.getElementById("assetAvgPriceLabel");
 var assetQuantity = document.getElementById("assetQuantity");
 var assetAvgPrice = document.getElementById("assetAvgPrice");
+var assetCurrentPriceField = document.getElementById("assetCurrentPriceField");
+var assetCurrentPriceLabel = document.getElementById("assetCurrentPriceLabel");
+var assetCurrentPrice = document.getElementById("assetCurrentPrice");
 var assetPositionNote = document.getElementById("assetPositionNote");
 var assetNote = document.getElementById("assetNote");
 var assetSubmitBtn = document.getElementById("assetSubmitBtn");
 var assetCancelEditBtn = document.getElementById("assetCancelEditBtn");
 var editingAssetId = null;
 var NEW_TICKER_VALUE = "__new__";
+var selectedTicker = NEW_TICKER_VALUE;
+
+// Текущая цена вводится вручную (котировок из интернета тут нет) — пока её
+// не ввели, считаем позицию по цене покупки, чтобы не показывать 0.
+function currentPriceOf(a){
+  return (a.currentPrice != null && a.currentPrice !== "") ? a.currentPrice : (a.avgCost || 0);
+}
 
 function assetPositionValue(a){
-  return a.type === "securities" ? (a.quantity||0) * (a.avgCost||0) : (a.amount||0);
+  if(a.type !== "securities") return a.amount || 0;
+  return (a.quantity||0) * currentPriceOf(a);
+}
+
+function assetPurchaseValue(a){
+  return (a.quantity||0) * (a.avgCost||0);
 }
 
 function assetValueKZT(a){
@@ -1649,7 +1685,8 @@ function updateAssetCurrencyFields(){
   var isUsd = assetCurrency.value === "USD";
   assetRateField.style.display = isUsd ? "" : "none";
   assetAmountLabel.textContent = isUsd ? "Текущая сумма, $" : "Текущая сумма, ₸";
-  assetAvgPriceLabel.textContent = isUsd ? "Цена за штуку, $" : "Цена за штуку, ₸";
+  assetAvgPriceLabel.textContent = isUsd ? "Цена покупки за штуку, $" : "Цена покупки за штуку, ₸";
+  assetCurrentPriceLabel.textContent = isUsd ? "Текущая цена за штуку, $" : "Текущая цена за штуку, ₸";
 }
 assetCurrency.addEventListener("change", updateAssetCurrencyFields);
 updateAssetCurrencyFields();
@@ -1667,46 +1704,70 @@ function securitiesTickers(){
   return out;
 }
 
-function populateTickerSelect(selectedName){
+// Чипы вместо нативного <select> — на телефоне пересобранный select иногда
+// не открывается с первого тапа, кнопки надёжнее и это же закрывает
+// просьбу "указать конкретные мои акции" без необходимости печатать тикер.
+function renderTickerChips(selectedName){
   var tickers = securitiesTickers();
-  assetTickerSelect.innerHTML = "";
+  selectedTicker = (selectedName && tickers.indexOf(selectedName) !== -1) ? selectedName : NEW_TICKER_VALUE;
+  var row = document.getElementById("assetTickerChips");
+  row.innerHTML = "";
   tickers.forEach(function(t){
-    var opt = document.createElement("option");
-    opt.value = t;
-    opt.textContent = t;
-    assetTickerSelect.appendChild(opt);
+    var chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "chip" + (t === selectedTicker ? " active" : "");
+    chip.textContent = t;
+    chip.addEventListener("click", function(){
+      if(editingAssetId) exitAssetEditMode();
+      selectedTicker = t;
+      renderTickerChips(t);
+      updateNewTickerVisibility();
+      refreshSecuritiesModeUI();
+    });
+    row.appendChild(chip);
   });
-  var newOpt = document.createElement("option");
-  newOpt.value = NEW_TICKER_VALUE;
-  newOpt.textContent = "+ Добавить новый тикер";
-  assetTickerSelect.appendChild(newOpt);
-  assetTickerSelect.value = (selectedName && tickers.indexOf(selectedName) !== -1) ? selectedName : NEW_TICKER_VALUE;
+  var newChip = document.createElement("button");
+  newChip.type = "button";
+  newChip.className = "chip" + (selectedTicker === NEW_TICKER_VALUE ? " active" : "");
+  newChip.textContent = "+ Новый тикер";
+  newChip.addEventListener("click", function(){
+    if(editingAssetId) exitAssetEditMode();
+    selectedTicker = NEW_TICKER_VALUE;
+    renderTickerChips(null);
+    updateNewTickerVisibility();
+    refreshSecuritiesModeUI();
+    assetNewTicker.focus();
+  });
+  row.appendChild(newChip);
 }
 
 function updateNewTickerVisibility(){
-  assetNewTickerField.style.display = assetTickerSelect.value === NEW_TICKER_VALUE ? "" : "none";
+  assetNewTickerField.style.display = selectedTicker === NEW_TICKER_VALUE ? "" : "none";
 }
 
 function getTickerMode(){
   if(editingAssetId) return "editPosition";
-  return assetTickerSelect.value === NEW_TICKER_VALUE ? "new" : "add";
+  return selectedTicker === NEW_TICKER_VALUE ? "new" : "add";
 }
 
 function fmtQty(n){ return (n||0).toLocaleString("ru-RU", { maximumFractionDigits:4 }); }
 function fmtPrice(n){ return (n||0).toLocaleString("ru-RU", { maximumFractionDigits:2 }); }
+function fmtPct(n){ return (n>=0?"+":"") + n.toFixed(2) + "%"; }
 
 function refreshSecuritiesModeUI(){
   var mode = getTickerMode();
   if(mode === "editPosition") return;
   assetQuantity.value = "";
   assetAvgPrice.value = "";
+  assetCurrentPrice.value = "";
   if(mode === "add"){
-    var existing = state.assets.filter(function(a){ return a.type === "securities" && a.name === assetTickerSelect.value; })[0];
+    var existing = state.assets.filter(function(a){ return a.type === "securities" && a.name === selectedTicker; })[0];
     if(existing){
       assetCurrency.value = existing.currency || "KZT";
       updateAssetCurrencyFields();
       assetRate.value = existing.rate || "";
       assetNote.value = existing.note || "";
+      assetCurrentPrice.value = existing.currentPrice || "";
       var curSym = existing.currency === "USD" ? "$" : "₸";
       assetPositionNote.style.display = "";
       assetPositionNote.textContent = "Уже в портфеле: " + fmtQty(existing.quantity) + " шт. · средняя цена " + curSym + fmtPrice(existing.avgCost) + ". Укажите количество и цену ЭТОЙ покупки — добавится к позиции.";
@@ -1726,6 +1787,7 @@ function setAssetFieldVisibility(isSecurities){
   assetTickerField.style.display = isSecurities ? "" : "none";
   assetAmountField.style.display = isSecurities ? "none" : "";
   assetQtyPriceRow.style.display = isSecurities ? "" : "none";
+  assetCurrentPriceField.style.display = isSecurities ? "" : "none";
   assetName.required = !isSecurities;
   assetAmount.required = !isSecurities;
   assetQuantity.required = isSecurities;
@@ -1740,7 +1802,7 @@ function updateAssetTypeUI(){
   var isSecurities = assetType.value === "securities";
   setAssetFieldVisibility(isSecurities);
   if(isSecurities){
-    populateTickerSelect();
+    renderTickerChips();
     updateNewTickerVisibility();
     refreshSecuritiesModeUI();
   }
@@ -1752,16 +1814,9 @@ assetType.addEventListener("change", function(){
   updateAssetTypeUI();
 });
 
-assetTickerSelect.addEventListener("change", function(){
-  if(editingAssetId) exitAssetEditMode();
-  updateNewTickerVisibility();
-  refreshSecuritiesModeUI();
-  if(assetTickerSelect.value === NEW_TICKER_VALUE) assetNewTicker.focus();
-});
-
 function resolveAssetName(){
   if(assetType.value === "securities"){
-    return assetTickerSelect.value === NEW_TICKER_VALUE ? (assetNewTicker.value || "").trim() : assetTickerSelect.value;
+    return selectedTicker === NEW_TICKER_VALUE ? (assetNewTicker.value || "").trim() : selectedTicker;
   }
   return (assetName.value || "").trim();
 }
@@ -1774,8 +1829,9 @@ function clearAssetFormInputs(){
   assetNewTicker.value = "";
   assetQuantity.value = "";
   assetAvgPrice.value = "";
+  assetCurrentPrice.value = "";
   if(assetType.value === "securities"){
-    populateTickerSelect();
+    renderTickerChips();
     updateNewTickerVisibility();
     refreshSecuritiesModeUI();
   }
@@ -1798,11 +1854,12 @@ function startEditAsset(a){
   var isSecurities = a.type === "securities";
   setAssetFieldVisibility(isSecurities);
   if(isSecurities){
-    populateTickerSelect(a.name);
+    renderTickerChips(a.name);
     updateNewTickerVisibility();
     assetPositionNote.style.display = "none";
     assetQuantity.value = a.quantity || "";
     assetAvgPrice.value = a.avgCost || "";
+    assetCurrentPrice.value = a.currentPrice || "";
   } else {
     assetName.value = a.name;
     assetAmount.value = a.amount;
@@ -1830,6 +1887,8 @@ assetForm.addEventListener("submit", function(e){
   if(assetType.value === "securities"){
     var qty = parseFloat(assetQuantity.value);
     var price = parseFloat(assetAvgPrice.value);
+    var curPriceInput = assetCurrentPrice.value;
+    var curPrice = curPriceInput !== "" ? parseFloat(curPriceInput) : null;
     if(!qty || qty <= 0 || !(price >= 0)){
       alert("Укажите количество и цену за штуку этой покупки.");
       return;
@@ -1841,6 +1900,7 @@ assetForm.addEventListener("submit", function(e){
         state.assets[idx].name = name;
         state.assets[idx].quantity = qty;
         state.assets[idx].avgCost = price;
+        state.assets[idx].currentPrice = curPrice;
         state.assets[idx].currency = currency;
         state.assets[idx].rate = rate;
         state.assets[idx].note = note;
@@ -1856,13 +1916,14 @@ assetForm.addEventListener("submit", function(e){
         existing.avgCost = totalQty > 0 ? totalCost / totalQty : 0;
         existing.currency = currency;
         existing.rate = rate;
+        if(curPrice != null) existing.currentPrice = curPrice;
         if(note) existing.note = note;
         existing.updated = todayStr();
       } else {
-        state.assets.push({ id:uid(), type:"securities", name:name, currency:currency, rate:rate, quantity:qty, avgCost:price, note:note, updated:todayStr() });
+        state.assets.push({ id:uid(), type:"securities", name:name, currency:currency, rate:rate, quantity:qty, avgCost:price, currentPrice:curPrice, note:note, updated:todayStr() });
       }
     } else {
-      state.assets.push({ id:uid(), type:"securities", name:name, currency:currency, rate:rate, quantity:qty, avgCost:price, note:note, updated:todayStr() });
+      state.assets.push({ id:uid(), type:"securities", name:name, currency:currency, rate:rate, quantity:qty, avgCost:price, currentPrice:curPrice, note:note, updated:todayStr() });
     }
   } else {
     var amount = parseFloat(assetAmount.value);
@@ -1906,6 +1967,11 @@ function renderAssetGroup(type, listId, totalId){
     return;
   }
   items.forEach(function(a){
+    if(a.type === "securities"){
+      list.appendChild(renderSecurityCard(a, total));
+      return;
+    }
+
     var row = document.createElement("div");
     row.className = "op-row";
     var main = document.createElement("div");
@@ -1917,12 +1983,7 @@ function renderAssetGroup(type, listId, totalId){
     meta.className = "op-meta";
     var isUsd = a.currency === "USD";
     var rateNote = isUsd ? ("курс " + a.rate) : "";
-    if(a.type === "securities"){
-      var curSym = isUsd ? "$" : "₸";
-      meta.textContent = fmtQty(a.quantity) + " шт. · средняя цена " + curSym + fmtPrice(a.avgCost) + " · Обновлено " + a.updated + (rateNote ? " · " + rateNote : "") + (a.note ? " · " + a.note : "");
-    } else {
-      meta.textContent = "Обновлено " + a.updated + (rateNote ? " · " + rateNote : "") + (a.note ? " · " + a.note : "");
-    }
+    meta.textContent = "Обновлено " + a.updated + (rateNote ? " · " + rateNote : "") + (a.note ? " · " + a.note : "");
     main.appendChild(name);
     main.appendChild(meta);
 
@@ -1970,6 +2031,107 @@ function renderAssetGroup(type, listId, totalId){
     row.appendChild(right);
     list.appendChild(row);
   });
+}
+
+// Карточка бумаги в духе брокерских приложений (тек. цена, прибыль/убыток
+// в деньгах и в %, доля в портфеле, средняя цена и стоимость покупки).
+function renderSecurityCard(a, portfolioTotalKZT){
+  var isUsd = a.currency === "USD";
+  var curSym = isUsd ? "$" : "₸";
+  var curPrice = currentPriceOf(a);
+  var curValue = assetPositionValue(a);
+  var purchaseValue = assetPurchaseValue(a);
+  var pnl = curValue - purchaseValue;
+  var pnlPct = purchaseValue > 0 ? (pnl / purchaseValue * 100) : 0;
+  var shareKZT = assetValueKZT(a);
+  var sharePct = portfolioTotalKZT > 0 ? (shareKZT / portfolioTotalKZT * 100) : 0;
+
+  var card = document.createElement("div");
+  card.className = "card";
+  card.style.marginBottom = "10px";
+
+  var head = document.createElement("div");
+  head.className = "security-head";
+  var ticker = document.createElement("div");
+  ticker.className = "ticker";
+  ticker.textContent = a.name;
+  var pnlEl = document.createElement("div");
+  pnlEl.className = "pnl " + (pnl >= 0 ? "good" : "bad");
+  pnlEl.textContent = (pnl >= 0 ? "+" : "") + curSym + fmtPrice(Math.abs(pnl)) + " " + fmtPct(pnlPct);
+  head.appendChild(ticker);
+  head.appendChild(pnlEl);
+  card.appendChild(head);
+
+  if(!a.currentPrice){
+    var hint = document.createElement("div");
+    hint.className = "muted";
+    hint.style.marginTop = "4px";
+    hint.textContent = "Текущая цена не указана — показано по цене покупки.";
+    card.appendChild(hint);
+  }
+
+  var stats = document.createElement("div");
+  stats.className = "security-stats";
+  function statRow(k, v){
+    var row = document.createElement("div");
+    row.className = "row";
+    var kEl = document.createElement("span"); kEl.className = "k"; kEl.textContent = k;
+    var vEl = document.createElement("span"); vEl.className = "v"; vEl.textContent = v;
+    row.appendChild(kEl); row.appendChild(vEl);
+    stats.appendChild(row);
+  }
+  statRow("Текущая цена", curSym + fmtPrice(curPrice));
+  statRow("Текущая стоимость", curSym + fmtPrice(curValue) + (isUsd ? "" : ""));
+  statRow("Количество", fmtQty(a.quantity) + " шт.");
+  statRow("Доля в портфеле", sharePct.toFixed(1) + " %");
+  statRow("Средняя цена покупки", curSym + fmtPrice(a.avgCost));
+  statRow("Стоимость покупки", curSym + fmtPrice(purchaseValue));
+  card.appendChild(stats);
+
+  if(isUsd){
+    var kztNote = document.createElement("div");
+    kztNote.className = "muted";
+    kztNote.style.marginTop = "6px";
+    kztNote.textContent = "≈ " + formatMoney(shareKZT) + " · курс " + a.rate;
+    card.appendChild(kztNote);
+  }
+
+  if(a.note){
+    var noteEl = document.createElement("div");
+    noteEl.className = "muted";
+    noteEl.style.marginTop = "6px";
+    noteEl.textContent = a.note;
+    card.appendChild(noteEl);
+  }
+
+  var footer = document.createElement("div");
+  footer.style.display = "flex";
+  footer.style.gap = "8px";
+  footer.style.marginTop = "10px";
+  footer.style.justifyContent = "flex-end";
+  var edit = document.createElement("button");
+  edit.className = "del-btn";
+  edit.type = "button";
+  edit.textContent = "✎ Изменить";
+  edit.addEventListener("click", function(){ startEditAsset(a); });
+  var del = document.createElement("button");
+  del.className = "del-btn";
+  del.type = "button";
+  del.textContent = "× Удалить";
+  del.addEventListener("click", function(){
+    if(confirm("Удалить «" + a.name + "»?")){
+      state.assets = state.assets.filter(function(x){ return x.id !== a.id; });
+      saveState();
+      if(editingAssetId === a.id) exitAssetEditMode();
+      renderAssets();
+      renderDashboard();
+    }
+  });
+  footer.appendChild(edit);
+  footer.appendChild(del);
+  card.appendChild(footer);
+
+  return card;
 }
 
 /* ---------- dashboard ---------- */
