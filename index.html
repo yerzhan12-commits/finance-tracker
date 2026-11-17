@@ -107,6 +107,10 @@
     background:none;border:none;color:var(--muted);font-size:18px;line-height:1;
     cursor:pointer;padding:4px 6px;
   }
+  .cat-move-select{
+    background:var(--surface);border:1px solid var(--border);color:var(--ink2);
+    font-size:12px;border-radius:8px;padding:4px 6px;max-width:92px;
+  }
 
   .empty-state{color:var(--muted);font-size:13px;text-align:center;padding:20px 8px;}
 
@@ -1103,6 +1107,50 @@ function renderCategoryList(){
     });
     row.appendChild(edit);
 
+    // Перенос категории (вместе со всеми её операциями) в другой источник —
+    // нужно, когда категорию завели не под тем источником (магазин/личное)
+    // и это выяснилось уже после того, как ею пользовались.
+    var moveSelect = document.createElement("select");
+    moveSelect.className = "cat-move-select";
+    moveSelect.title = "Перенести категорию в другой источник";
+    var moveHint = document.createElement("option");
+    moveHint.value = "";
+    moveHint.textContent = "⇄ Источник";
+    moveSelect.appendChild(moveHint);
+    state.sources.forEach(function(s){
+      var opt = document.createElement("option");
+      opt.value = s.key;
+      opt.textContent = s.label;
+      moveSelect.appendChild(opt);
+    });
+    moveSelect.addEventListener("change", function(){
+      var targetKey = moveSelect.value;
+      moveSelect.value = "";
+      if(!targetKey || targetKey === srcKey) return;
+      var targetSource = state.sources.filter(function(s){ return s.key === targetKey; })[0];
+      var count = state.operations.filter(function(o){ return o.source === srcKey && o.type === type && o.category === cat; }).length;
+      var msg = "Перенести категорию «" + cat + "» в источник «" + (targetSource ? targetSource.label : targetKey) + "»?";
+      if(count) msg += " Вместе с ней переедут " + count + " операц. с этой категорией.";
+      if(!confirm(msg)) return;
+
+      if(!state.categories[targetKey]) state.categories[targetKey] = { income:[], expense:[] };
+      var targetList = state.categories[targetKey][type] || (state.categories[targetKey][type] = []);
+      if(targetList.indexOf(cat) === -1) targetList.push(cat);
+
+      state.operations.forEach(function(o){
+        if(o.source === srcKey && o.type === type && o.category === cat) o.source = targetKey;
+      });
+
+      state.categories[srcKey][type] = list.filter(function(c){ return c !== cat; });
+
+      saveState();
+      renderSourceSelect();
+      renderCategoryList();
+      renderOperations();
+      renderDashboard();
+    });
+    row.appendChild(moveSelect);
+
     var del = document.createElement("button");
     del.className = "del-btn";
     del.type = "button";
@@ -1110,7 +1158,7 @@ function renderCategoryList(){
     del.addEventListener("click", function(){
       var used = state.operations.some(function(o){ return o.source === srcKey && o.type === type && o.category === cat; });
       if(used){
-        alert("Нельзя удалить «" + cat + "» — категория используется в операциях. Сначала удалите или измените их во вкладке «Операции».");
+        alert("Нельзя удалить «" + cat + "» — категория используется в операциях. Если нужно перенести в другой источник, воспользуйтесь выбором «⇄ Источник» рядом.");
         return;
       }
       if(confirm("Удалить категорию «" + cat + "»?")){
