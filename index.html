@@ -2218,16 +2218,16 @@ function renderDashboard(){
   var net = income - expense;
   var capital = state.assets.reduce(function(s,a){ return s+assetValueKZT(a); },0);
 
-  // "Шығын-бизнес" — строго эти 4 категории (по просьбе); все остальные
-  // категории расходов (независимо от источника) идут в "Отбасы шығыны".
-  // Доход-бизнес берём по источнику "Магазин" (как в карточке "Прибыльность
-  // магазина" ниже) — отдельного списка бизнес-категорий дохода не задавали.
-  var BIZ_EXPENSE_CATEGORIES = ["Дүкен Жалғас Али", "Закупка товара", "Карго", "Дүкен коммуналка"];
+  // Бизнес/семья считаем по источнику операции (shop / personal), а не по
+  // узкому списку категорий — иначе любые магазинные расходы с категорией
+  // не из списка (зарплата, аренда, реклама, логистика и т.п.) ошибочно
+  // утекали в "Отбасы шығыны" и раздували сумму. Ценные бумаги/депозит/
+  // пенсия не считаются ни бизнесом, ни семьёй — это инвестиции.
   var bizIncome = ops.filter(function(o){ return o.type === "income" && o.source === "shop"; })
     .reduce(function(s,o){ return s+o.amount; },0);
-  var bizExpense = ops.filter(function(o){ return o.type === "expense" && BIZ_EXPENSE_CATEGORIES.indexOf(o.category) !== -1; })
+  var bizExpense = ops.filter(function(o){ return o.type === "expense" && o.source === "shop"; })
     .reduce(function(s,o){ return s+o.amount; },0);
-  var famExpense = ops.filter(function(o){ return o.type === "expense" && BIZ_EXPENSE_CATEGORIES.indexOf(o.category) === -1; })
+  var famExpense = ops.filter(function(o){ return o.type === "expense" && o.source === "personal"; })
     .reduce(function(s,o){ return s+o.amount; },0);
   var bizProfit = bizIncome - bizExpense;
   var bizMargin = bizIncome > 0 ? (bizProfit / bizIncome * 100) : 0;
